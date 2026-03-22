@@ -1,0 +1,40 @@
+# WhatsApp session data
+.wwebjs_auth/
+.wwebjs_cache/
+
+# PM2
+.pm2/
+.pm2hp
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data (contém dados de processamento)
+data/
+*.json
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporários
+*.tmp
+*.temp
