@@ -45,3 +45,6 @@ docs/
 # Scripts locais (caminhos sensíveis)
 /scripts/*.ps1
 
+
+# Worktrees
+.worktrees/
