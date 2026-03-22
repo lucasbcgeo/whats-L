@@ -42,3 +42,6 @@ Desktop.ini
 # Docs (specs internos)
 docs/
 
+# Scripts locais (caminhos sensíveis)
+scripts/*.ps1
+
