@@ -41,3 +41,6 @@ Desktop.ini
 
 # Docs (specs internos)
 docs/
+
+# Scripts exemplo (contêm caminhos sensíveis se copiados)
+scripts/exp/
