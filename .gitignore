@@ -38,3 +38,6 @@ Desktop.ini
 # Temporários
 *.tmp
 *.temp
+
+# Docs (specs internos)
+docs/
