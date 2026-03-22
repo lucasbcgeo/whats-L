@@ -43,5 +43,5 @@ Desktop.ini
 docs/
 
 # Scripts locais (caminhos sensíveis)
-scripts/*.ps1
+/scripts/*.ps1
 
