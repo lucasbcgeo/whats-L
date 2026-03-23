@@ -1,6 +1,6 @@
 # whats-L 🤖
 
-WhatsApp bot for automatic life metrics tracking in Obsidian. Log sleep, nutrition, exercise, reading and more — directly from a WhatsApp conversation.
+WhatsApp bot for automatic life metrics tracking in Obsidian. Log sleep, nutrition, exercise, reading and more — directly from a WhatsApp conversation. Also forwards files from specific numbers to a group and syncs `.md` header changes to a group.
 
 ## Features
 
@@ -144,7 +144,7 @@ MIT
 
 # whats-L 🤖 (Português)
 
-Bot de WhatsApp para registro automático de métricas de vida no Obsidian. Registre sono, alimentação, exercício, leitura e mais — direto de uma conversa de WhatsApp.
+Bot de WhatsApp para registro automático de métricas de vida no Obsidian. Registre sono, alimentação, exercício, leitura e mais — direto de uma conversa de WhatsApp. Também encaminha arquivos de números específicos para um grupo e sincroniza mudanças de headers `.md` com um grupo.
 
 ## Funcionalidades
 
