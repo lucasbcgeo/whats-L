@@ -1,4 +1,4 @@
-const { AUDIO_SOURCE_NUMBERS } = require("../config/env");
+const { AUDIO_SOURCE_NUMBERS, GROUP_NAME } = require("../config/env");
 const { transcribeAudio } = require("../services/transcriptionService");
 const { appendTaskToSection } = require("../lib/obsidianClient");
 const { parseCommand } = require("../utils/parse");
@@ -19,15 +19,15 @@ async function convertToWav(inputPath, outputPath) {
 }
 
 module.exports = {
-  match({ msg }) {
-    if (!AUDIO_SOURCE_NUMBERS?.length) return false;
-    if (!AUDIO_SOURCE_NUMBERS.includes(msg.from)) return false;
+  match({ msg, chat }) {
+    if (!chat?.isGroup) return false;
+    if (GROUP_NAME && chat.name !== GROUP_NAME) return false;
     return msg.hasMedia && msg.type === "audio";
   },
 
-  async handle({ msg }) {
+  async handle({ msg, chat }) {
     const client = msg.client;
-    console.log(`\n[AUDIO HANDLER] Processando áudio de: ${msg.from}`);
+    console.log(`\n[AUDIO HANDLER] Processando áudio do grupo: ${chat.name}`);
 
     try {
       const media = await msg.downloadMedia();

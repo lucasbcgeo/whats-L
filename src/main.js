@@ -36,9 +36,9 @@ async function processMessage(msg, { silent } = { silent: false }) {
         }
 
         for (const h of handlers) {
-            if (h.match({ msg, parsed })) {
+            if (h.match({ msg, parsed, chat })) {
                 if (!silent) console.log("[HANDLER EXEC]", h.constructor?.name || "handler");
-                await h.handle({ msg, parsed });
+                await h.handle({ msg, parsed, chat });
                 markProcessed(msg);
                 checkpoint.setLastTs(msg.timestamp);
                 if (!silent) console.log("[DONE] mensagem processada");
