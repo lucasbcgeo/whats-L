@@ -1,0 +1,9 @@
+{
+  "sources": {
+    "lucas doc": { "type": "vault", "path": "G:\\Lucas" },
+    "lucas": { "type": "vault", "path": "G:\\Lucas" },
+    "franklin doc": { "type": "vault", "path": "G:\\Franklin" },
+    "franklin": { "type": "vault", "path": "G:\\Franklin" }
+  },
+  "destinations": {}
+}
