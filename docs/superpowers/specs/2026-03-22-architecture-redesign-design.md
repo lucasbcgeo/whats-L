@@ -1,9 +1,13 @@
 # Design Spec: Arquitetura em Camadas para o whats-L
 
 **Data:** 2026-03-22
-**Status:** Em Progresso
+**Status:** ✅ Concluido
 **Ultima Atualizacao:** 2026-03-22
-**Commits:** `4a23947` (infra + lib + dedupe/sync), `594137e` (services + harness)
+**Commits:**
+- `4a23947` - chore: setup infrastructure (config, utils, lib, dedupe and sync services)
+- `594137e` - feat: implement business logic services with verification
+- `ea242a7` - feat: migrate all 11 handlers to the new layer
+- `5400efd` - refactor: complete architecture redesign and cleanup old structure
 **Tópico:** Reorganização Arquitetural (Layered Architecture)
 
 ---
@@ -50,7 +54,13 @@ A estrutura seguirá o padrão de camadas em `src/`:
 - **Dedupe**: Criar `src/services/dedupeService.js` com `{ getLastTs, setLastTs, checkpoint }` para gerenciar `checkpoint.json`.
 - **Nota**: O `src/core/dedupe.js` original (processed.json) permanece em `src/core/` até Task 4 para garantir compatibilidade. Será movido/limpo na Task 5.
 
-### Fase 3: Handlers e Refatoração (Interface) ⏳ Pendente
+### Fase 3: Handlers e Refatoração (Interface) ✅
+- Converter cada `src/features/*/index.js` em um arquivo individual em `src/handlers/`.
+- Cada handler importa `metricService` para salvar dados.
+- `src/main.js` na raiz de `src/` com imports atualizados.
+- `src/services/headerSyncService.js` exporta `syncHeaders` para startup.
+
+### Fase 4: Validação e Limpeza ✅
 - Converter cada `src/features/*/index.js` em um arquivo individual em `src/handlers/`.
 - Cada handler deve importar o `metricService` para salvar dados.
 - Mover o `main.js` para a raiz de `src/` e atualizar os imports.
@@ -76,13 +86,53 @@ A estrutura seguirá o padrão de camadas em `src/`:
 ---
 
 ## 6. Validação e Testes
-- **Funcional:** Comandos via WhatsApp devem continuar funcionando exatamente como hoje. (Pendente - Task 5)
+- **Funcional:** ✅ Teste de fumaça — imports verificados, bot tenta inicializar corretamente.
 - **Isolamento:** ✅ Script `scripts/test-metric.js` criado e executado com sucesso. Grava ansiedade, exercicio, procrastinacao, lazer e leitura no Obsidian sem WhatsApp.
 - **Regressão:** ✅ `data/checkpoint.json` lido e atualizado corretamente via `dedupeService.checkpoint`.
+- **Cleanup:** ✅ 1803 linhas removidas, estrutura antiga eliminada.
 
 ---
 
-## 7. Notas de Implementação
+## 7. Estrutura Final (`src/`)
+
+```
+src/
+├── main.js                    # Orquestrador (executável)
+├── config/
+│   └── env.js                 # Variáveis de ambiente validadas
+├── utils/
+│   ├── logger.js              # INFO, WARN, ERROR
+│   ├── parse.js               # parseCommand, hasForceFlag
+│   └── duration.js            # parseDurationToISO
+├── lib/
+│   ├── obsidianClient.js      # Acesso ao vault + time helpers
+│   └── whatsappClient.js      # Cliente wweb.js + getTargetGroup/Chats
+├── services/
+│   ├── obsidianService.js     # upsertRootKey (delegação)
+│   ├── metricService.js       # Lógica de métricas (cérebro)
+│   ├── dedupeService.js       # Checkpoint (checkpoint.json)
+│   ├── syncService.js         # Sync por checkpoint
+│   └── headerSyncService.js   # Re-export syncHeaders
+└── handlers/
+    ├── index.js               # Array dos 11 handlers
+    ├── ansiedade.js
+    ├── alimentacao.js
+    ├── exercicio.js
+    ├── games.js
+    ├── leitura.js
+    ├── sono.js
+    ├── tempo-tela.js
+    ├── procrastinacao.js
+    ├── lazer.js
+    ├── file-forwarder.js
+    └── header-sync.js
+```
+
+**Preservado:** `src/core/dedupe.js` — `isProcessed`/`markProcessed` (processed.json, TTL 72h). Não faz parte da nova arquitetura mas ainda utilizado pelo main.js.
+
+---
+
+## 8. Notas de Implementação
 
 ### Interfaces exportadas por camada:
 - `src/config/env.js` → objeto com todas as vars validadas
