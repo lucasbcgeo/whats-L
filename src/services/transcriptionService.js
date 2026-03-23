@@ -7,6 +7,7 @@ const logger = require("../utils/logger");
 
 function findWhisperBinary() {
   const candidates = [
+    "whisper",
     "whisper-cli.exe",
     path.join(os.homedir(), "whisper.cpp", "build", "bin", "release", "whisper-cli.exe"),
     "C:\\whisper.cpp\\build\\bin\\release\\whisper-cli.exe",
@@ -14,7 +15,7 @@ function findWhisperBinary() {
   for (const c of candidates) {
     if (c && fs.existsSync(c)) return c;
   }
-  return "whisper-cli.exe";
+  return "whisper";
 }
 
 async function transcribeAudio(audioPath, modelPath = WHISPER_MODEL_PATH) {
@@ -26,26 +27,21 @@ async function transcribeAudio(audioPath, modelPath = WHISPER_MODEL_PATH) {
     throw new Error(`Modelo whisper não encontrado em: ${modelFullPath}. Baixe de: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin`);
   }
 
+  const modelDir = path.dirname(modelFullPath);
+  const modelFile = path.basename(modelFullPath);
   const whisperBin = findWhisperBinary();
-  const tempOutput = path.join(os.tmpdir(), `whisper-${Date.now()}`);
+  const outputBase = path.join(os.tmpdir(), path.basename(audioPath, path.extname(audioPath)));
 
   return new Promise((resolve, reject) => {
-    const cmd = `${whisperBin} -m "${modelFullPath}" -f "${audioPath}" -otxt -o "${tempOutput}"`;
+    const cmd = `${whisperBin} -m ${modelFile} --model-dir "${modelDir}" -f "${audioPath}" -otxt --output-dir "${os.tmpdir()}"`;
     logger.info(`[TRANSCRIPTION] Executando: ${cmd}`);
 
     exec(cmd, { shell: true }, async (error, stdout, stderr) => {
       try {
-        const txtPath = `${tempOutput}.txt`;
+        const txtPath = `${outputBase}.txt`;
         if (await fs.pathExists(txtPath)) {
           const text = (await fs.readFile(txtPath, "utf8")).trim();
           await fs.remove(txtPath);
-          const tempDir = os.tmpdir();
-          const files = await fs.readdir(tempDir);
-          for (const f of files) {
-            if (f.startsWith(path.basename(tempOutput))) {
-              await fs.remove(path.join(tempDir, f));
-            }
-          }
           resolve(text);
         } else if (stderr) {
           resolve(stderr.trim());
