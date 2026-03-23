@@ -48,9 +48,6 @@ module.exports = {
       const transcription = await transcribeAudio(tempWav);
       console.log("[AUDIO HANDLER] Transcrição:", transcription);
 
-      await fs.remove(tempInput);
-      await fs.remove(tempWav);
-
       const trimmed = transcription.trim().toLowerCase();
       
       if (trimmed.startsWith("tarefa")) {
@@ -75,6 +72,9 @@ module.exports = {
       }
     } catch (e) {
       console.error("[AUDIO HANDLER] Erro:", e.message);
+    } finally {
+      await fs.remove(tempInput).catch(() => {});
+      await fs.remove(tempWav).catch(() => {});
     }
   },
 };
