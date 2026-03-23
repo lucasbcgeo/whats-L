@@ -111,6 +111,24 @@ function msToISODuration(ms) {
   return s;
 }
 
+async function appendTaskToSection({ dateStr, taskText }) {
+  const { filePath, fmObj, body } = await readDaily({ dateStr });
+  
+  const newTask = ` - [ ] ${taskText}\n`;
+  const sectionMatch = body.match(/##\s*Tarefas\n/);
+  
+  let newBody;
+  if (!sectionMatch) {
+    newBody = body + "\n## Tarefas\n" + newTask;
+  } else {
+    const idx = body.indexOf(sectionMatch[0]) + sectionMatch[0].length;
+    newBody = body.slice(0, idx) + newTask + body.slice(idx);
+  }
+  
+  await writeDaily({ filePath, fmObj, body: newBody });
+  return { filePath, task: taskText };
+}
+
 module.exports = {
   vaultPath,
   dailyFolder,
@@ -120,6 +138,7 @@ module.exports = {
   ensureDailyNote,
   readDaily,
   writeDaily,
+  appendTaskToSection,
   upsertRootKey,
   time: {
     toIsoMinuteZ,
