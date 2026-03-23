@@ -12,7 +12,7 @@ function findWhisperBinary() {
     "C:\\whisper.cpp\\build\\bin\\release\\whisper-cli.exe",
   ];
   for (const c of candidates) {
-    if (c) return c;
+    if (c && fs.existsSync(c)) return c;
   }
   return "whisper-cli.exe";
 }
