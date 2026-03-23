@@ -1,161 +1,94 @@
 # whats-L 🤖
 
-- WhatsApp bot for automatic habit tracking in Obsidian.
-- Send messages to a WhatsApp group/contact from a .md file whenever the file is updated.
-- Automatic file forwarding from specific numbers to another contact.
-
-## Summary
-
-- [Features](#features)
-- [Structure](#structure)
-- [Setup](#setup)
-- [Environment Variables](#environment-variables)
-- [Usage](#usage)
-- [PM2 (production)](#pm2-production)
-
-## Features
-
-- **Sleep** - `#dormi` / `#acordei`
-- **Nutrition** - `#cafe` / `#almoco` / `#janta` / `#lanche`
-- **Exercise** - `#exercicio` (yes/no)
-- **Games** - `#games <time>`
-- **Screen Time** - `#tempo <time>`
-- **Reading** - `#leitura` (yes/no)
-- **Leisure** - `#lazer` (yes/no)
-- **Anxiety** - `#ansiedade <0-10>`
-- **Procrastination** - `#procrastinacao <0-10>`
-- **File Forwarder** - Automatically forwards files from specific numbers to a configured group.
-- **Header Sync** - Sends updates from a .md note to a WhatsApp group when specific headers are modified.
-
-## Structure
-
-```
-src/
-├── main/          # Entry point
-├── core/          # Pure logic (parse, dedupe, duration)
-├── features/     # Command handlers
-└── services/     # Integrations (WhatsApp, Obsidian)
-scripts/          # Start/stop scripts
-data/             # Checkpoint and processing
-```
-
-## Setup
-
-```bash
-# Install dependencies
-npm install
-
-# Configure .env (copy from .env.example)
-cp .env.example .env
-```
-
-### Environment Variables
-
-```env
-OBSIDIAN_VAULT_PATH=Path/to/vault
-DAILY_FOLDER=02_Notes/Journal
-GROUP_NAME=WhatsApp group name
-DORMIR_MADRUGADA_ATE=08
-
-# File Forwarder
-FORWARD_SOURCE_NUMBERS=5511999910621@c.us,556199099705@c.us
-TARGET_FORWARD_GROUP_NAME=Target Group
-
-# Header Sync
-HEADER_SYNC_FILE=Path/to/note.md
-HEADER_SYNC_GROUP_ID=GroupID@group.id
-```
-
-## Usage
-
-```powershell
-# Start
-.\scripts\start.ps1
-
-# Stop
-.\scripts\stop.ps1
-```
-
-Or use PowerShell aliases (if configured):
-- `oli` - start
-- `olf` - stop
-
-## PM2 (production)
-
-```bash
-pm2 start src/main/main.js --name whats-L
-pm2 save
-```
-
----
-
-# whats-L 🤖 (Versão em Português)
-
- - Bot de WhatsApp para registro automático de hábitos no Obsidian 
- - Envio de mensagens para um grupo/contato de whatsapp a partir de um arquivo .md sempre que o arquivo for atualizado. 
- - Encaminhamento automático de arquivos de números específicos para outro contato.
-
-## Sumário
-
-- [Funcionalidades](#funcionalidades)
-- [Estrutura](#estrutura)
-- [Setup](#setup)
-- [Variáveis de Ambiente](#variáveis-de-ambiente)
-- [Uso](#uso)
-- [PM2 (produção)](#pm2-produção)
+Bot de WhatsApp para registro automático de métricas de vida no Obsidian. Registre sono, alimentação, exercício, leitura e mais — direto de uma conversa de WhatsApp.
 
 ## Funcionalidades
 
-- **Sono** - `#dormi` / `#acordei`
-- **Alimentação** - `#cafe` / `#almoco` / `#janta` / `#lanche`
-- **Exercício** - `#exercicio` (sim/não)
-- **Games** - `#games <tempo>`
-- **Tempo de tela** - `#tempo <tempo>`
-- **Leitura** - `#leitura` (sim/não)
-- **Lazer** - `#lazer` (sim/não)
-- **Ansiedade** - `#ansiedade <0-10>`
-- **Procrastinação** - `#procrastinacao <0-10>`
-- **File Forwarder** - Encaminha automaticamente arquivos de números específicos para um grupo configurado.
-- **Header Sync** - Envia atualizações de uma nota .md para um grupo de whatsapp quando headers específicos são alterados.
+- **Sono** — `#dormi` / `#acordei`
+- **Alimentação** — `#cafe` / `#almoco` / `#janta` / `#lanche`
+- **Exercício** — `#exercicio` (sim/não)
+- **Games** — `#games <tempo>` (ex: `#games 2h 30m`)
+- **Tempo de tela** — `#tempo <tempo>`
+- **Leitura** — `#leitura` (sim/não)
+- **Lazer** — `#lazer` (sim/não)
+- **Ansiedade** — `#ansiedade <0-10>`
+- **Procrastinação** — `#procrastinacao <0-10>`
+- **Correção** — adicione `correção` (ou `force`) a qualquer comando para sobrescrever o valor existente
+- **File Forwarder** — encaminha automaticamente arquivos de números específicos para um grupo configurado
+- **Header Sync** — envia atualizações de uma nota `.md` para um grupo quando headers `###` são alterados
 
-## Estrutura
+---
+
+## Arquitetura
+
+Camadas definidas (Layered Architecture):
 
 ```
 src/
-├── main/          # Entry point
-├── core/          # Lógica pura (parse, dedupe, duration)
-├── features/     # Handlers de comandos
-└── services/     # Integrações (WhatsApp, Obsidian)
-scripts/          # Scripts de start/stop
-data/             # Checkpoint e processamento
+├── main.js              # Orquestrador — ponto de entrada
+├── config/
+│   └── env.js          # Variáveis de ambiente validadas
+├── utils/
+│   ├── logger.js       # INFO, WARN, ERROR
+│   ├── parse.js        # parseCommand, hasForceFlag
+│   └── duration.js     # parseDurationToISO
+├── lib/
+│   ├── obsidianClient.js   # Acesso ao vault + helpers de tempo
+│   └── whatsappClient.js   # Cliente wweb.js
+├── services/
+│   ├── metricService.js    # Lógica de negócio — cérebro do sistema
+│   ├── obsidianService.js  # Delegação ao obsidianClient
+│   ├── dedupeService.js    # Checkpoint (data/checkpoint.json)
+│   ├── syncService.js      # Sync por checkpoint
+│   └── headerSyncService.js
+└── handlers/               # 11 adaptadores específicos do WhatsApp
+    ├── ansiedade.js
+    ├── alimentacao.js
+    ├── exercicio.js
+    ├── games.js
+    ├── leitura.js
+    ├── sono.js
+    ├── tempo-tela.js
+    ├── procrastinacao.js
+    ├── lazer.js
+    ├── file-forwarder.js
+    └── header-sync.js
 ```
+
+**Separação de responsabilidades:**
+- `lib/` — clientes externos (sem lógica de negócio)
+- `services/` — lógica de negócio pura
+- `handlers/` — adaptadores WhatsApp (match + delegação)
+
+---
 
 ## Setup
 
 ```bash
-# Instalar dependências
 npm install
-
-# Configurar .env (copie de .env.example)
 cp .env.example .env
+# Edite o .env com seus valores
 ```
 
 ### Variáveis de Ambiente
 
 ```env
-OBSIDIAN_VAULT_PATH=Caminho/para/vault
-DAILY_FOLDER=02_Notas/Jornada
-GROUP_NAME=Nome do grupo WhatsApp
-DORMIR_MADRUGADA_ATE=08
+OBSIDIAN_VAULT_PATH=/path/to/vault
+DAILY_FOLDER=Diario
+GROUP_NAME=My WhatsApp Group
+DORMIR_MADRUGADA_ATE=8
+BACKFILL_LIMIT=500
 
 # File Forwarder
-FORWARD_SOURCE_NUMBERS=5511999910621@c.us,556199099705@c.us
-TARGET_FORWARD_GROUP_NAME=Grupo Destino
+FORWARD_SOURCE_NUMBERS=number1@c.us,number2@c.us
+TARGET_FORWARD_GROUP_NAME=Target Group
 
 # Header Sync
-HEADER_SYNC_FILE=Caminho/para/nota.md
-HEADER_SYNC_GROUP_ID=GrupoID@group.id
+HEADER_SYNC_FILE=/path/to/note.md
+HEADER_SYNC_GROUP_ID=groupid@g.us
 ```
+
+---
 
 ## Uso
 
@@ -167,16 +100,34 @@ HEADER_SYNC_GROUP_ID=GrupoID@group.id
 .\scripts\stop.ps1
 ```
 
-Ou use os aliases do PowerShell (se configurados):
-- `oli` - iniciar
-- `olf` - parar
+Ou com npm:
+
+```bash
+npm start
+```
+
+Aliases do PowerShell (se configurados):
+- `oli` — iniciar
+- `olf` — parar
+
+### Testes
+
+```bash
+# Testa metricService sem WhatsApp (grava métricas no Obsidian)
+npm test
+```
+
+---
 
 ## PM2 (produção)
 
 ```bash
-pm2 start src/main/main.js --name whats-L
+pm2 start src/main.js --name whats-L
 pm2 save
+pm2 logs whats-L
 ```
+
+---
 
 ## License
 

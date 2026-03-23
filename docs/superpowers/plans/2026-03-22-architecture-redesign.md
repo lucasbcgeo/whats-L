@@ -17,10 +17,10 @@
 - Create: `src/config/env.js`
 - Create: `src/utils/logger.js`
 
-- [ ] **Step 1: Backup de Segurança**
+- [x] **Step 1: Backup de Segurança**
   Copiar a pasta `data/` e o vault do Obsidian para um local seguro fora do projeto.
 
-- [ ] **Step 2: Criar Config de Ambiente**
+- [x] **Step 2: Criar Config de Ambiente**
   Criar `src/config/env.js` centralizando `process.env`.
   ```javascript
   require('dotenv').config();
@@ -35,14 +35,10 @@
   };
   ```
 
-- [ ] **Step 3: Criar Logger**
-  Criar `src/utils/logger.js` com níveis `info`, `warn`, `error`.
+- [x] **Step 3: Criar Logger**
+  Criar `src/utils/logger.js` com níveis `INFO`, `WARN`, `ERROR`.
 
-- [ ] **Step 4: Commit**
-  ```bash
-  git add src/config/env.js src/utils/logger.js
-  git commit -m "chore: setup infrastructure (config and logger)"
-  ```
+- [x] **Step 4: Commit** ✅ (commit 4a23947)
 
 ---
 
@@ -54,20 +50,16 @@
 - Create: `src/lib/obsidianClient.js`
 - Create: `src/lib/whatsappClient.js`
 
-- [ ] **Step 1: Migrar Utils**
+- [x] **Step 1: Migrar Utils**
   Copiar `src/core/parse.js` e `src/core/duration.js` para `src/utils/`.
 
-- [ ] **Step 2: Criar Obsidian Client**
-  Extrair caminhos de `src/services/obsidian.js`.
+- [x] **Step 2: Criar Obsidian Client**
+  Extrair caminhos de `src/services/obsidian.js` + `time:` helpers.
 
-- [ ] **Step 3: Criar WhatsApp Client**
-  Extrair inicialização de `src/services/whatsapp.js`.
+- [x] **Step 3: Criar WhatsApp Client**
+  Extrair inicialização de `src/services/whatsapp.js` (sem sync).
 
-- [ ] **Step 4: Commit**
-  ```bash
-  git add src/utils/ src/lib/
-  git commit -m "chore: migrate utils and extract clients to lib"
-  ```
+- [x] **Step 4: Commit** ✅ (commit 4a23947, junto com Task 1)
 
 ---
 
@@ -80,26 +72,22 @@
 - Create: `src/services/dedupeService.js`
 - Create: `src/services/syncService.js`
 
-- [ ] **Step 1: Criar Harness de Teste**
+- [x] **Step 1: Criar Harness de Teste**
   Criar `scripts/test-metric.js` para validar serviços sem o WhatsApp.
 
-- [ ] **Step 2: Implementar Obsidian Service**
-  Mover lógica de `src/services/obsidian.js`.
+- [x] **Step 2: Implementar Obsidian Service**
+  Expor `upsertRootKey` delegando ao `lib/obsidianClient`.
   **Verificação**: Rodar `scripts/test-metric.js` para validar escrita no Obsidian.
 
-- [ ] **Step 3: Implementar Metric Service**
-  Criar interface genérica para métricas.
-  **Verificação**: Rodar `scripts/test-metric.js` com uma métrica de teste.
+- [x] **Step 3: Implementar Metric Service**
+  Interface genérica cobrindo ansiedade, alimentacao, exercicio, games, tempo_tela, procrastinacao, lazer, leitura, sono_dormi, sono_acordei.
+  **Verificação**: ✅ Todos os testes passaram.
 
-- [ ] **Step 4: Implementar Dedupe e Sync Services**
-  Mover lógica de `src/core/dedupe.js` e `src/services/whatsapp.js`.
-  **Verificação Crítica**: Garantir que `data/checkpoint.json` é lido e atualizado corretamente.
+- [x] **Step 4: Implementar Dedupe e Sync Services**
+  `dedupeService.js` gerencia `checkpoint.json` (getLastTs/setLastTs). `syncService.js` implementa `syncMissedMessagesByCheckpoint` isolado.
+  **Verificação Crítica**: Checkpoint lido/atualizado corretamente.
 
-- [ ] **Step 5: Commit**
-  ```bash
-  git add src/services/ scripts/test-metric.js
-  git commit -m "feat: implement business logic services with verification"
-  ```
+- [x] **Step 5: Commit** ✅ (commit 594137e)
 
 ---
 
@@ -107,22 +95,19 @@
 
 **Files:**
 - Create: `src/handlers/*.js` (11 arquivos)
+- Create: `src/handlers/index.js`
+- Create: `src/services/headerSyncService.js`
 
-- [ ] **Step 1: Migrar Handlers 1-5 (Básicos)**
+- [x] **Step 1: Migrar Handlers 1-5 (Básicos)** ✅
   Migrar: `ansiedade`, `alimentacao`, `exercicio`, `games`, `leitura`.
-  **Verificação**: Usar `scripts/test-metric.js` adaptado para chamar o `handle` de cada um.
 
-- [ ] **Step 2: Migrar Handlers 6-11 (Complexos)**
+- [x] **Step 2: Migrar Handlers 6-11 (Complexos)** ✅
   Migrar: `sono`, `tempo-tela`, `procrastinacao`, `lazer`, `file-forwarder`, `header-sync`.
 
-- [ ] **Step 3: Garantir Paridade**
-  Verificar se todos os 11 comandos originais em `src/features/` estão presentes em `src/handlers/`.
+- [x] **Step 3: Garantir Paridade** ✅
+  Todos os 11 comandos verificados: ansiedade, alimentacao, exercicio, games, leitura, sono, tempo-tela, procrastinacao, lazer, file-forwarder, header-sync.
 
-- [ ] **Step 4: Commit**
-  ```bash
-  git add src/handlers/
-  git commit -m "feat: migrate all 11 handlers to the new layer"
-  ```
+- [x] **Step 4: Commit** ✅ (commit ea242a7)
 
 ---
 

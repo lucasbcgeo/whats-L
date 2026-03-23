@@ -40,4 +40,4 @@ function setLastTs(ts) {
   if (next > cur) atomicWriteJson(CHECKPOINT_FILE, { last_ts: next });
 }
 
-module.exports = { getLastTs, setLastTs };
+module.exports = { getLastTs, setLastTs, checkpoint: { getLastTs, setLastTs } };

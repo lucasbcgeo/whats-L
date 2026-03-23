@@ -1,1 +1,1 @@
-module.exports = { syncHeaders: require("./header-sync").syncHeaders };
+module.exports = { syncHeaders: require("../handlers/header-sync").syncHeaders };

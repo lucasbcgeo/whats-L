@@ -1,7 +1,9 @@
 # Design Spec: Arquitetura em Camadas para o whats-L
 
 **Data:** 2026-03-22
-**Status:** Em Revisão
+**Status:** Em Progresso
+**Ultima Atualizacao:** 2026-03-22
+**Commits:** `4a23947` (infra + lib + dedupe/sync), `594137e` (services + harness)
 **Tópico:** Reorganização Arquitetural (Layered Architecture)
 
 ---
@@ -37,22 +39,23 @@ A estrutura seguirá o padrão de camadas em `src/`:
 
 ## 4. Plano de Migração
 
-### Fase 1: Preparação (Infraestrutura)
+### Fase 1: Preparação (Infraestrutura) ✅
 - Criar a estrutura de pastas.
 - **Config**: Criar `src/config/env.js` exportando um objeto com todas as variáveis validadas.
-- **Logger**: Criar `src/utils/logger.js` para padronizar as saídas no terminal.
+- **Logger**: Criar `src/utils/logger.js` com níveis `INFO`, `WARN`, `ERROR`.
 
-### Fase 2: Serviços e Clientes (Core)
+### Fase 2: Serviços e Clientes (Core) ✅
 - **WhatsApp**: Mover lógica de `src/services/whatsapp.js` para `src/lib/whatsappClient.js` (apenas o cliente) e criar `src/services/syncService.js` (para a lógica de sincronização).
-- **Obsidian**: Separar `src/services/obsidian.js` em `src/lib/obsidianClient.js` (configuração do path) e `src/services/obsidianService.js` (métodos `upsertRootKey`, `saveMetric`).
-- **Dedupe**: Mover `src/core/dedupe.js` para `src/services/dedupeService.js`.
+- **Obsidian**: Separar `src/services/obsidian.js` em `src/lib/obsidianClient.js` (configuração do path + `time:` helpers) e `src/services/obsidianService.js` (métodos `upsertRootKey`, delegando ao lib).
+- **Dedupe**: Criar `src/services/dedupeService.js` com `{ getLastTs, setLastTs, checkpoint }` para gerenciar `checkpoint.json`.
+- **Nota**: O `src/core/dedupe.js` original (processed.json) permanece em `src/core/` até Task 4 para garantir compatibilidade. Será movido/limpo na Task 5.
 
-### Fase 3: Handlers e Refatoração (Interface)
+### Fase 3: Handlers e Refatoração (Interface) ⏳ Pendente
 - Converter cada `src/features/*/index.js` em um arquivo individual em `src/handlers/`.
 - Cada handler deve importar o `metricService` para salvar dados.
 - Mover o `main.js` para a raiz de `src/` e atualizar os imports.
 
-### Fase 4: Validação e Limpeza
+### Fase 4: Validação e Limpeza ⏳ Pendente
 - Executar scripts de teste.
 - Remover pastas obsoletas (`core`, `features`).
 
@@ -73,9 +76,34 @@ A estrutura seguirá o padrão de camadas em `src/`:
 ---
 
 ## 6. Validação e Testes
-- **Funcional:** Comandos via WhatsApp devem continuar funcionando exatamente como hoje.
-- **Isolamento:** Criar um script `scripts/test-metric-service.js` que grava uma métrica fixa (ex: teste-ansiedade) no Obsidian sem iniciar o WhatsApp.
-- **Regressão:** Verificar se o checkpoint de mensagens continua sendo lido/escrito corretamente em `data/checkpoint.json`.
+- **Funcional:** Comandos via WhatsApp devem continuar funcionando exatamente como hoje. (Pendente - Task 5)
+- **Isolamento:** ✅ Script `scripts/test-metric.js` criado e executado com sucesso. Grava ansiedade, exercicio, procrastinacao, lazer e leitura no Obsidian sem WhatsApp.
+- **Regressão:** ✅ `data/checkpoint.json` lido e atualizado corretamente via `dedupeService.checkpoint`.
+
+---
+
+## 7. Notas de Implementação
+
+### Interfaces exportadas por camada:
+- `src/config/env.js` → objeto com todas as vars validadas
+- `src/lib/obsidianClient.js` → `{ vaultPath, dailyFolder, cutOff, readDaily, writeDaily, upsertRootKey, time: {...} }`
+- `src/lib/whatsappClient.js` → `{ client, getTargetGroup, getTargetChats }`
+- `src/services/obsidianService.js` → `{ upsertRootKey, time }` (delegação pura ao lib)
+- `src/services/metricService.js` → `{ saveMetric, metricService: { saveMetric } }`
+- `src/services/dedupeService.js` → `{ getLastTs, setLastTs, checkpoint: { getLastTs, setLastTs } }`
+- `src/services/syncService.js` → `{ syncMissedMessagesByCheckpoint }`
+- `src/utils/logger.js` → `{ INFO, WARN, ERROR }`
+- `src/utils/parse.js` → `{ parseCommand, hasForceFlag }`
+- `src/utils/duration.js` → `{ parseDurationToISO }`
+
+### metricService.saveMetric` contrato:
+```javascript
+saveMetric({ metric, value, timestamp, dateStr, rawArgs, options: { force } })
+// metric: "ansiedade"|"exercicio"|"procrastinacao"|"lazer"|"leitura"|"games"|"tempo_tela"|"alimentacao"|"sono_dormi"|"sono_acordei"
+// dateStr opcional: sobrescreve a data lógica calculada
+// rawArgs opcional: objeto { cmd, args } para parse interno de valor booleano/escala
+// options.force: pula proteção de sobrescrita
+```
 
 
 ---
