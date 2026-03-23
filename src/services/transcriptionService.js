@@ -39,6 +39,13 @@ async function transcribeAudio(audioPath, modelPath = WHISPER_MODEL_PATH) {
         if (await fs.pathExists(txtPath)) {
           const text = (await fs.readFile(txtPath, "utf8")).trim();
           await fs.remove(txtPath);
+          const tempDir = os.tmpdir();
+          const files = await fs.readdir(tempDir);
+          for (const f of files) {
+            if (f.startsWith(path.basename(tempOutput))) {
+              await fs.remove(path.join(tempDir, f));
+            }
+          }
           resolve(text);
         } else if (stderr) {
           resolve(stderr.trim());
@@ -52,4 +59,4 @@ async function transcribeAudio(audioPath, modelPath = WHISPER_MODEL_PATH) {
   });
 }
 
-module.exports = { transcribeAudio };
+module.exports = { transcribeAudio, findWhisperBinary };
