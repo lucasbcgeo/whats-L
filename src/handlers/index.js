@@ -1,3 +1,4 @@
+const audioHandler = require("./audio-handler");
 const ansiedade = require("./ansiedade");
 const alimentacao = require("./alimentacao");
 const exercicio = require("./exercicio");
@@ -11,6 +12,7 @@ const fileForwarder = require("./file-forwarder");
 const headerSync = require("./header-sync");
 
 module.exports = [
+    audioHandler,
     sono,
     alimentacao,
     exercicio,
