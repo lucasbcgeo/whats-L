@@ -9,6 +9,22 @@ const contactResolver = require("../resolvers/contactResolver");
 const pendingSelections = new Map();
 const SELECTION_TTL = 5 * 60 * 1000;
 
+function normalize(str) {
+    return (str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
+function findSimilarContacts(chats, term, maxResults = 5) {
+    const lower = normalize(term);
+    return chats
+        .filter(c => {
+            const cName = normalize(c.name);
+            const pushname = normalize(c.contact?.pushname);
+            const words = lower.split(/\s+/);
+            return words.some(w => w.length >= 3 && (cName.includes(w) || pushname.includes(w)));
+        })
+        .slice(0, maxResults);
+}
+
 function cleanExpired() {
     const now = Date.now();
     for (const [k, v] of pendingSelections) {
@@ -75,7 +91,10 @@ async function findRecipient(client, name) {
 
     if (matches.length === 1) return { chat: matches[0], ambiguous: false };
     if (matches.length > 1) return { chat: null, ambiguous: true, options: matches.slice(0, 5) };
-    return { chat: null, ambiguous: false };
+
+    // No match — find similar contacts for suggestions
+    const suggestions = findSimilarContacts(chats, name);
+    return { chat: null, ambiguous: false, suggestions };
 }
 
 async function searchFromSource(arquivo, fonte, client) {
@@ -182,7 +201,12 @@ module.exports = {
 
         const recipResult = await findRecipient(client, destino);
         if (!recipResult.chat && !recipResult.ambiguous) {
-            await msg.reply(`Destinatário "*${destino}*" não encontrado.`);
+            let msg_text = `Destinatário "*${destino}*" não encontrado.`;
+            if (recipResult.suggestions && recipResult.suggestions.length > 0) {
+                const sugList = recipResult.suggestions.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
+                msg_text += `\n\nVocê quis dizer?\n${sugList}\n\nTente novamente com o nome correto.`;
+            }
+            await msg.reply(msg_text);
             return;
         }
         if (recipResult.ambiguous) {
@@ -194,7 +218,17 @@ module.exports = {
         const results = await searchFromSource(arquivo, fonte, client);
 
         if (results.length === 0) {
-            await msg.reply(`Nenhum arquivo encontrado para "*${arquivo}*"${fonte ? ` em ${fonte}` : ""}.`);
+            let msg_text = `Nenhum arquivo encontrado para "*${arquivo}*"${fonte ? ` em ${fonte}` : ""}.`;
+            // If fonte was specified and isn't an alias, suggest similar contacts
+            if (fonte && !resolveSourceAlias(fonte)) {
+                const chats = await client.getChats();
+                const sug = findSimilarContacts(chats, fonte);
+                if (sug.length > 0) {
+                    const sugList = sug.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
+                    msg_text += `\n\nVocê quis dizer alguma dessas fontes?\n${sugList}`;
+                }
+            }
+            await msg.reply(msg_text);
             return;
         }
 
