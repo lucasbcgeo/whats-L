@@ -10,4 +10,6 @@ module.exports = {
   TARGET_FORWARD_GROUP_NAME: process.env.TARGET_FORWARD_GROUP_NAME,
   HEADER_SYNC_FILE: process.env.HEADER_SYNC_FILE,
   HEADER_SYNC_GROUP_ID: process.env.HEADER_SYNC_GROUP_ID,
+  WHISPER_MODEL_PATH: process.env.WHISPER_MODEL_PATH || "models/ggml-base.bin",
+  AUDIO_SOURCE_NUMBERS: (process.env.AUDIO_SOURCE_NUMBERS || "").split(",").map(n => n.trim()).filter(Boolean),
 };
