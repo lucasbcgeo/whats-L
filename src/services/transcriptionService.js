@@ -5,46 +5,25 @@ const os = require("os");
 const { WHISPER_MODEL_PATH } = require("../config/env");
 const logger = require("../utils/logger");
 
-function findWhisperBinary() {
-  const candidates = [
-    "whisper",
-    "whisper-cli.exe",
-    path.join(os.homedir(), "whisper.cpp", "build", "bin", "release", "whisper-cli.exe"),
-    "C:\\whisper.cpp\\build\\bin\\release\\whisper-cli.exe",
-  ];
-  for (const c of candidates) {
-    if (c && fs.existsSync(c)) return c;
-  }
-  return "whisper";
-}
-
-async function transcribeAudio(audioPath, modelPath = WHISPER_MODEL_PATH) {
-  const modelFullPath = path.isAbsolute(modelPath) 
-    ? modelPath 
-    : path.join(process.cwd(), modelPath);
-
-  if (!await fs.pathExists(modelFullPath)) {
-    throw new Error(`Modelo whisper não encontrado em: ${modelFullPath}. Baixe de: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin`);
-  }
-
-  const modelDir = path.dirname(modelFullPath);
-  const modelFile = path.basename(modelFullPath);
-  const whisperBin = findWhisperBinary();
-  const outputBase = path.join(os.tmpdir(), path.basename(audioPath, path.extname(audioPath)));
+async function transcribeAudio(audioPath, modelSize = "base") {
+  const modelPath = WHISPER_MODEL_PATH || modelSize;
+  
+  const tempOutput = path.join(os.tmpdir(), `whisper-${Date.now()}`);
+  const outputDir = os.tmpdir();
 
   return new Promise((resolve, reject) => {
-    const cmd = `${whisperBin} -m ${modelFile} --model-dir "${modelDir}" -f "${audioPath}" -otxt --output-dir "${os.tmpdir()}"`;
+    const cmd = `python -m whisper "${audioPath}" --model ${modelPath} --language pt --output_dir "${outputDir}" --output_file "${path.basename(tempOutput)}"`;
     logger.info(`[TRANSCRIPTION] Executando: ${cmd}`);
 
     exec(cmd, { shell: true }, async (error, stdout, stderr) => {
       try {
-        const txtPath = `${outputBase}.txt`;
+        const txtPath = `${tempOutput}.txt`;
         if (await fs.pathExists(txtPath)) {
           const text = (await fs.readFile(txtPath, "utf8")).trim();
           await fs.remove(txtPath);
           resolve(text);
-        } else if (stderr) {
-          resolve(stderr.trim());
+        } else if (error) {
+          reject(new Error(`Transcription failed: ${error.message}`));
         } else {
           reject(new Error("Transcription failed - no output file"));
         }
@@ -55,4 +34,4 @@ async function transcribeAudio(audioPath, modelPath = WHISPER_MODEL_PATH) {
   });
 }
 
-module.exports = { transcribeAudio, findWhisperBinary };
+module.exports = { transcribeAudio };
