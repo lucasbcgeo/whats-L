@@ -112,6 +112,14 @@ function msToISODuration(ms) {
 }
 
 async function appendTaskToSection({ dateStr, taskText }) {
+  if (!taskText || typeof taskText !== 'string') {
+    throw new Error('taskText is required');
+  }
+  taskText = taskText.trim();
+  if (!taskText) {
+    throw new Error('taskText cannot be empty');
+  }
+  
   const { filePath, fmObj, body } = await readDaily({ dateStr });
   
   const newTask = ` - [ ] ${taskText}\n`;
