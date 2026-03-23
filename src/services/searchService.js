@@ -86,9 +86,10 @@ function normalizeSource(input) {
 
     // Try alias resolver first
     const alias = resolveSourceAlias(input);
-    if (alias && alias.type === "vault" && alias.path) {
-        if (alias.path.toLowerCase().includes("lucas")) return "lucas";
-        if (alias.path.toLowerCase().includes("franklin")) return "franklin";
+    if (alias && alias.type === "vault") {
+        if (alias.vault) return alias.vault;
+        if (alias.path && alias.path.toLowerCase().includes("lucas")) return "lucas";
+        if (alias.path && alias.path.toLowerCase().includes("franklin")) return "franklin";
     }
 
     // Fallback to original logic

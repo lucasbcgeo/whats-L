@@ -1,9 +1,9 @@
 {
   "sources": {
-    "lucas doc": { "type": "vault", "path": "G:\\Lucas" },
-    "lucas": { "type": "vault", "path": "G:\\Lucas" },
-    "franklin doc": { "type": "vault", "path": "G:\\Franklin" },
-    "franklin": { "type": "vault", "path": "G:\\Franklin" }
+    "lucas doc": { "type": "vault", "path": "G:\\Lucas", "vault": "lucas" },
+    "lucas": { "type": "vault", "path": "G:\\Lucas", "vault": "lucas" },
+    "franklin doc": { "type": "vault", "path": "G:\\Franklin", "vault": "franklin" },
+    "franklin": { "type": "vault", "path": "G:\\Franklin", "vault": "franklin" }
   },
   "destinations": {}
 }

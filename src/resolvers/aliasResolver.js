@@ -3,10 +3,17 @@ const path = require("path");
 
 const ALIASES_FILE = path.join(__dirname, "..", "..", "data", "aliases.json");
 
+let _cache = null;
+let _mtime = 0;
+
 function loadAliases() {
     try {
-        if (!fs.existsSync(ALIASES_FILE)) return { sources: {}, destinations: {} };
-        return JSON.parse(fs.readFileSync(ALIASES_FILE, "utf8"));
+        const stat = fs.statSync(ALIASES_FILE, { throwIfNoEntry: false });
+        if (_cache && stat && stat.mtimeMs === _mtime) return _cache;
+        if (!stat) return { sources: {}, destinations: {} };
+        _cache = JSON.parse(fs.readFileSync(ALIASES_FILE, "utf8"));
+        _mtime = stat.mtimeMs;
+        return _cache;
     } catch {
         return { sources: {}, destinations: {} };
     }
@@ -16,17 +23,17 @@ function normalize(str) {
     return (str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 }
 
-function resolveSourceAlias(input) {
-    if (!input) return null;
+function resolveAlias(aliases, input) {
     const key = normalize(input);
-    const aliases = loadAliases();
 
-    // Check custom aliases first (exact match)
-    if (aliases.sources[key]) return aliases.sources[key];
+    // Exact match first
+    if (aliases[key]) return aliases[key];
 
-    // Check partial match (key contains alias or alias contains key)
-    for (const [alias, config] of Object.entries(aliases.sources)) {
-        if (key.includes(normalize(alias)) || normalize(alias).includes(key)) {
+    // Partial match — require alias >= 3 chars to avoid false positives
+    for (const [alias, config] of Object.entries(aliases)) {
+        const normAlias = normalize(alias);
+        if (normAlias.length < 3) continue;
+        if (key.includes(normAlias) || normAlias.includes(key)) {
             return config;
         }
     }
@@ -34,20 +41,16 @@ function resolveSourceAlias(input) {
     return null;
 }
 
+function resolveSourceAlias(input) {
+    if (!input) return null;
+    const aliases = loadAliases();
+    return resolveAlias(aliases.sources, input);
+}
+
 function resolveDestinationAlias(input) {
     if (!input) return null;
-    const key = normalize(input);
     const aliases = loadAliases();
-
-    if (aliases.destinations[key]) return aliases.destinations[key];
-
-    for (const [alias, config] of Object.entries(aliases.destinations)) {
-        if (key.includes(normalize(alias)) || normalize(alias).includes(key)) {
-            return config;
-        }
-    }
-
-    return null;
+    return resolveAlias(aliases.destinations, input);
 }
 
 module.exports = { resolveSourceAlias, resolveDestinationAlias, loadAliases };

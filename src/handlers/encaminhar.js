@@ -73,10 +73,11 @@ function parseEncaminhar(text) {
 }
 
 async function findRecipient(client, name) {
+    const chats = await client.getChats();
+
     // Try destination alias first
     const aliasDest = resolveDestinationAlias(name);
     if (aliasDest) {
-        const chats = await client.getChats();
         const match = chats.find(c => {
             if (aliasDest.type === "group") return c.isGroup && c.name === aliasDest.name;
             if (aliasDest.type === "contact") return !c.isGroup && (c.name || "").toLowerCase().includes(aliasDest.name.toLowerCase());
@@ -86,7 +87,6 @@ async function findRecipient(client, name) {
     }
 
     // Fallback to fuzzy search
-    const chats = await client.getChats();
     const lower = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     const matches = chats.filter(c => {
@@ -113,8 +113,8 @@ async function searchFromSource(arquivo, fonte, client) {
 
     // Specific vault source
     if (sourceAlias && sourceAlias.type === "vault") {
-        const filter = sourceAlias.path.toLowerCase().includes("lucas") ? "lucas" :
-                       sourceAlias.path.toLowerCase().includes("franklin") ? "franklin" : null;
+        const filter = sourceAlias.vault || (sourceAlias.path && sourceAlias.path.toLowerCase().includes("lucas") ? "lucas" :
+                       sourceAlias.path && sourceAlias.path.toLowerCase().includes("franklin") ? "franklin" : null);
         return await vaultResolver.resolve(arquivo, filter);
     }
 
