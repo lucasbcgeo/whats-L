@@ -2,6 +2,7 @@ const fs = require("fs-extra");
 const path = require("path");
 const MessageMedia = require("whatsapp-web.js").MessageMedia;
 const { REF_BOT } = require("../config/env");
+const { getHandlerForTrigger, isDestinationAllowed } = require("../config/commands");
 const { resolveSourceAlias, resolveDestinationAlias } = require("../resolvers/aliasResolver");
 const vaultResolver = require("../resolvers/vaultResolver");
 const contactResolver = require("../resolvers/contactResolver");
@@ -55,7 +56,11 @@ function parseEncaminhar(text) {
     let arquivo = null, destino = null, fonte = null;
 
     const paraMatch = rest.match(/\s+para\s*[:\-]?\s*/i);
-    if (!paraMatch) return null;
+    if (!paraMatch) {
+        arquivo = rest.trim();
+        if (!arquivo) return null;
+        return { arquivo, destino: null, fonte: null };
+    }
 
     arquivo = rest.slice(0, paraMatch.index).trim();
     const afterPara = rest.slice(paraMatch.index + paraMatch[0].length);
@@ -113,9 +118,7 @@ async function searchFromSource(arquivo, fonte, client) {
 
     // Specific vault source
     if (sourceAlias && sourceAlias.type === "vault") {
-        const filter = sourceAlias.vault || (sourceAlias.path && sourceAlias.path.toLowerCase().includes("lucas") ? "lucas" :
-                       sourceAlias.path && sourceAlias.path.toLowerCase().includes("franklin") ? "franklin" : null);
-        return await vaultResolver.resolve(arquivo, filter);
+        return await vaultResolver.resolve(arquivo, sourceAlias.vault || fonte);
     }
 
     // No alias match — try as direct source filter (backward compat)
@@ -141,12 +144,108 @@ function createMediaFromFile(file) {
     return MessageMedia.fromFilePath(file.path);
 }
 
+async function searchAndSendToChat(client, msg, chat, targetChat, arquivo, fonte, profile) {
+    if (profile && !isDestinationAllowed(profile, targetChat, msg.from)) {
+        await msg.reply(`❌ Você não tem permissão para encaminhar para *${targetChat.name}*.`);
+        return;
+    }
+
+    const results = await searchFromSource(arquivo, fonte, client);
+
+    if (results.length === 0) {
+        await msg.reply(`Nenhum arquivo encontrado para "*${arquivo}*"${fonte ? ` em ${fonte}` : ""}.`);
+        return;
+    }
+    if (results.length === 1) {
+        const file = results[0];
+        try {
+            const media = createMediaFromFile(file);
+            await targetChat.sendMessage(media, { caption: file.name });
+            await msg.reply(`✅ *${file.name}* enviado para *${targetChat.name}*`);
+        } catch (e) {
+            console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
+            await msg.reply("❌ Erro ao enviar o arquivo.");
+        } finally {
+            if (file._temp) fs.remove(file.path).catch(() => {});
+        }
+        return;
+    }
+
+    const list = results.map((r, i) => `${i + 1}. ${r.name} (${r.source})`).join("\n");
+    const sent = await msg.reply(`Encontrei ${results.length} arquivos:\n${list}\n\nResponda com o número.`);
+    pendingSelections.set(chat.id._serialized || msg.from, {
+        type: "file", ts: Date.now(), msgId: sent?.id?._serialized,
+        targetChat, results,
+    });
+}
+
+async function searchAndSend(client, msg, chat, arquivo, destino, fonte, profile) {
+    const recipResult = await findRecipient(client, destino);
+    console.log("[ENCAMINHAR] searchAndSend findRecipient:", recipResult.chat?.name || recipResult.ambiguous ? "ambiguous" : "not found");
+
+    if (!recipResult.chat && !recipResult.ambiguous) {
+        let msg_text = `Destinatário "*${destino}*" não encontrado.`;
+        if (recipResult.suggestions && recipResult.suggestions.length > 0) {
+            const sugList = recipResult.suggestions.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
+            msg_text += `\n\nVocê quis dizer?\n${sugList}\n\nResponda com o número.`;
+            const sent = await msg.reply(msg_text);
+            pendingSelections.set(chat.id._serialized || msg.from, {
+                type: "destSuggestion", ts: Date.now(), msgId: sent?.id?._serialized,
+                suggestions: recipResult.suggestions, arquivo, originalDestino: destino, fonte, profile,
+            });
+        } else {
+            await msg.reply(msg_text);
+        }
+        return;
+    }
+    if (recipResult.ambiguous) {
+        const list = recipResult.options.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
+        await msg.reply(`Mais de um resultado para "*${destino}*":\n${list}\n\nSeja mais específico.`);
+        return;
+    }
+
+    const targetChat = recipResult.chat;
+
+    if (profile && !isDestinationAllowed(profile, targetChat, msg.from)) {
+        await msg.reply(`❌ Você não tem permissão para encaminhar para *${targetChat.name}*.`);
+        return;
+    }
+    const results = await searchFromSource(arquivo, fonte, client);
+
+    if (results.length === 0) {
+        await msg.reply(`Nenhum arquivo encontrado para "*${arquivo}*"${fonte ? ` em ${fonte}` : ""}.`);
+        return;
+    }
+    if (results.length === 1) {
+        const file = results[0];
+        try {
+            const media = createMediaFromFile(file);
+            await targetChat.sendMessage(media, { caption: file.name });
+            await msg.reply(`✅ *${file.name}* enviado para *${targetChat.name}*`);
+        } catch (e) {
+            console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
+            await msg.reply("❌ Erro ao enviar o arquivo.");
+        } finally {
+            if (file._temp) fs.remove(file.path).catch(() => {});
+        }
+        return;
+    }
+
+    const list = results.map((r, i) => `${i + 1}. ${r.name} (${r.source})`).join("\n");
+    const sent = await msg.reply(`Encontrei ${results.length} arquivos:\n${list}\n\nResponda com o número.`);
+    pendingSelections.set(chat.id._serialized || msg.from, {
+        type: "file", ts: Date.now(), msgId: sent?.id?._serialized,
+        targetChat, results,
+    });
+}
+
 module.exports = {
     match({ msg, parsed, chat }) {
         if (!chat?.isGroup) return false;
-        if (REF_BOT && chat.name !== REF_BOT) return false;
 
         cleanExpired();
+
+        if (parsed && getHandlerForTrigger(parsed.cmd) === "fileForwarderManual") return true;
 
         const body = (msg.body || "").trim();
         const lower = body.toLowerCase();
@@ -154,21 +253,29 @@ module.exports = {
         if (lower.match(/^#encaminhar\s/) || lower.match(/^registro\s+encaminhar\s/) || lower.match(/^encaminhar\s/)) return true;
 
         if (/^\d+$/.test(body)) {
-            const sel = pendingSelections.get(msg.from);
+            const sel = pendingSelections.get(chat.id._serialized || msg.from);
             if (sel) return true;
         }
 
         return false;
     },
 
-    async handle({ msg, parsed, chat }) {
-        const client = msg.client;
-        const body = (msg.body || "").trim();
+    async handle({ msg, parsed, chat, profile }) {
+        const client = msg.client || require("../lib/whatsappClient").client;
+        const body = (msg.body || parsed?.raw || "").trim();
+
+        console.log("[ENCAMINHAR] handle() chamado. body:", body, "| via audio:", !!parsed?._fuzzy);
+        console.log("[ENCAMINHAR] msg.from:", msg.from, "| msg.body:", JSON.stringify(msg.body));
 
         // Handle numeric selection from previous search
         if (/^\d+$/.test(body)) {
-            const sel = pendingSelections.get(msg.from);
-            if (!sel) return;
+            const sel = pendingSelections.get(chat.id._serialized || msg.from);
+            if (!sel) {
+                console.log("[ENCAMINHAR] Seleção numérica recebida mas sem pendência para:", msg.from);
+                console.log("[ENCAMINHAR] Pendências ativas:", [...pendingSelections.keys()]);
+                await msg.reply("Não há uma seleção pendente. Envie o comando *#encaminhar* novamente.");
+                return;
+            }
 
             const idx = parseInt(body, 10) - 1;
 
@@ -205,14 +312,38 @@ module.exports = {
                     return;
                 }
 
-                const chosenName = sel.suggestions[idx].name;
-                pendingSelections.delete(msg.from);
+                const chosen = sel.suggestions[idx];
+                pendingSelections.delete(chat.id._serialized || msg.from);
 
-                console.log(`[ENCAMINHAR] Destino selecionado: "${chosenName}" (era "${sel.originalDestino}")`);
-                const newCmd = buildCommand(sel.arquivo, chosenName, sel.fonte);
-                const fakeMsg = { ...msg, body: newCmd };
-                const newParsed = parseEncaminhar(newCmd);
-                await module.exports.handle({ msg: fakeMsg, parsed: newParsed, chat });
+                console.log(`[ENCAMINHAR] Destino selecionado: "${chosen.name}" (era "${sel.originalDestino}")`);
+
+                const results = await searchFromSource(sel.arquivo, sel.fonte, client);
+
+                if (results.length === 0) {
+                    await msg.reply(`Nenhum arquivo encontrado para "*${sel.arquivo}*".`);
+                    return;
+                }
+                if (results.length === 1) {
+                    const file = results[0];
+                    try {
+                        const media = createMediaFromFile(file);
+                        await chosen.sendMessage(media, { caption: file.name });
+                        await msg.reply(`✅ *${file.name}* enviado para *${chosen.name}*`);
+                    } catch (e) {
+                        console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
+                        await msg.reply("❌ Erro ao enviar o arquivo.");
+                    } finally {
+                        if (file._temp) fs.remove(file.path).catch(() => {});
+                    }
+                    return;
+                }
+
+                const list = results.map((r, i) => `${i + 1}. ${r.name} (${r.source})`).join("\n");
+                const sent = await msg.reply(`Encontrei ${results.length} arquivos:\n${list}\n\nResponda com o número.`);
+                pendingSelections.set(chat.id._serialized || msg.from, {
+                    type: "file", ts: Date.now(), msgId: sent?.id?._serialized,
+                    targetChat: chosen, results,
+                });
                 return;
             }
 
@@ -224,13 +355,10 @@ module.exports = {
                 }
 
                 const chosenName = sel.suggestions[idx].name;
-                pendingSelections.delete(msg.from);
+                pendingSelections.delete(chat.id._serialized || msg.from);
 
                 console.log(`[ENCAMINHAR] Fonte selecionada: "${chosenName}" (era "${sel.originalFonte}")`);
-                const newCmd = buildCommand(sel.arquivo, sel.destino, chosenName);
-                const fakeMsg = { ...msg, body: newCmd };
-                const newParsed = parseEncaminhar(newCmd);
-                await module.exports.handle({ msg: fakeMsg, parsed: newParsed, chat });
+                await searchAndSend(client, msg, chat, sel.arquivo, sel.destino, chosenName, sel.profile);
                 return;
             }
 
@@ -238,94 +366,22 @@ module.exports = {
         }
 
         const cmd = parseEncaminhar(body);
+        console.log("[ENCAMINHAR] parseEncaminhar result:", cmd);
         if (!cmd) {
             await msg.reply("Formato: *#encaminhar* arquivo *para:* destino *de:* fonte (de é opcional)");
             return;
         }
 
         const { arquivo, destino, fonte } = cmd;
+
+        if (!destino) {
+            console.log(`[ENCAMINHAR] Sem destino — enviando para o próprio chat: "${chat.name}"`);
+            await searchAndSendToChat(client, msg, chat, chat, arquivo, fonte, profile);
+            return;
+        }
+
         console.log(`[ENCAMINHAR] arquivo="${arquivo}" destino="${destino}" fonte="${fonte || 'todas'}"`);
 
-        const recipResult = await findRecipient(client, destino);
-        if (!recipResult.chat && !recipResult.ambiguous) {
-            let msg_text = `Destinatário "*${destino}*" não encontrado.`;
-            if (recipResult.suggestions && recipResult.suggestions.length > 0) {
-                const sugList = recipResult.suggestions.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-                msg_text += `\n\nVocê quis dizer?\n${sugList}\n\nResponda com o número.`;
-                const sent = await msg.reply(msg_text);
-                pendingSelections.set(msg.from, {
-                    type: "destSuggestion",
-                    ts: Date.now(),
-                    msgId: sent?.id?._serialized,
-                    suggestions: recipResult.suggestions,
-                    arquivo,
-                    originalDestino: destino,
-                    fonte,
-                });
-            } else {
-                await msg.reply(msg_text);
-            }
-            return;
-        }
-        if (recipResult.ambiguous) {
-            const list = recipResult.options.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-            await msg.reply(`Mais de um resultado para "*${destino}*":\n${list}\n\nSeja mais específico.`);
-            return;
-        }
-
-        const results = await searchFromSource(arquivo, fonte, client);
-
-        if (results.length === 0) {
-            let msg_text = `Nenhum arquivo encontrado para "*${arquivo}*"${fonte ? ` em ${fonte}` : ""}.`;
-            // If fonte was specified and isn't an alias, suggest similar contacts
-            if (fonte && !resolveSourceAlias(fonte)) {
-                const chats = await client.getChats();
-                const sug = findSimilarContacts(chats, fonte);
-                if (sug.length > 0) {
-                    const sugList = sug.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-                    msg_text += `\n\nVocê quis dizer alguma dessas fontes?\n${sugList}\n\nResponda com o número.`;
-                    const sent = await msg.reply(msg_text);
-                    pendingSelections.set(msg.from, {
-                        type: "sourceSuggestion",
-                        ts: Date.now(),
-                        msgId: sent?.id?._serialized,
-                        suggestions: sug,
-                        arquivo,
-                        destino,
-                        originalFonte: fonte,
-                    });
-                    return;
-                }
-            }
-            await msg.reply(msg_text);
-            return;
-        }
-
-        if (results.length === 1) {
-            const file = results[0];
-            try {
-                const media = createMediaFromFile(file);
-                await recipResult.chat.sendMessage(media, { caption: file.name });
-                console.log(`[ENCAMINHAR] Enviado: ${file.name} → ${recipResult.chat.name}`);
-                await msg.reply(`✅ *${file.name}* enviado para *${recipResult.chat.name}*`);
-            } catch (e) {
-                console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
-                await msg.reply("❌ Erro ao enviar o arquivo.");
-            } finally {
-                if (file._temp) fs.remove(file.path).catch(() => {});
-            }
-            return;
-        }
-
-        const list = results.map((r, i) => `${i + 1}. ${r.name} (${r.source})`).join("\n");
-        const sent = await msg.reply(`Encontrei ${results.length} arquivos:\n${list}\n\nResponda com o número.`);
-
-        pendingSelections.set(msg.from, {
-            type: "file",
-            ts: Date.now(),
-            msgId: sent?.id?._serialized,
-            targetChat: recipResult.chat,
-            results,
-        });
+        await searchAndSend(client, msg, chat, arquivo, destino, fonte, profile);
     },
 };

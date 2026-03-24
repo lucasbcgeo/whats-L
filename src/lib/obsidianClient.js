@@ -1,11 +1,11 @@
 const path = require("path");
 const fs = require("fs-extra");
 const yaml = require("js-yaml");
-const { VAULT, DAILY_FOLDER, DORMIR_MADRUGADA_ATE } = require("../config/env");
+const { VAULT, DAILY_FOLDER, DAILY_LOG_CUTOFF } = require("../config/env");
 
 const vaultPath = VAULT;
 const dailyFolder = DAILY_FOLDER || "Diario";
-const cutOff = DORMIR_MADRUGADA_ATE;
+const cutOff = DAILY_LOG_CUTOFF;
 
 function splitFrontmatter(md) {
   const match = md.match(/^---[ \t]*[\r\n]+([\s\S]*?)---[ \t]*[\r\n]+/);
@@ -111,44 +111,61 @@ function msToISODuration(ms) {
   return s;
 }
 
-async function appendTaskToSection({ dateStr, taskText }) {
+async function appendTaskToSection({ dateStr, taskText, section }) {
   if (!taskText || typeof taskText !== 'string') {
     throw new Error('taskText is required');
   }
   taskText = taskText.trim();
-  if (!taskText) {
-    throw new Error('taskText cannot be empty');
-  }
+  if (!taskText) return;
   
+  const sectionName = section || "Tarefas";
   const { filePath, fmObj, body } = await readDaily({ dateStr });
   
   const newTask = ` - [ ] ${taskText}\n`;
-  const sectionMatch = body.match(/##\s*Tarefas\n/);
+  const sectionRegex = new RegExp(`^##\\s*${sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, "mi");
+  const sectionMatch = body.match(sectionRegex);
   
   let newBody;
   if (!sectionMatch) {
-    newBody = body + "\n## Tarefas\n" + newTask;
+    // Se não existir o cabeçalho, cria no final do arquivo (sem duplicar)
+    newBody = body.trimEnd() + `\n\n## ${sectionName}\n` + newTask;
   } else {
-    const idx = body.indexOf(sectionMatch[0]) + sectionMatch[0].length;
-    newBody = body.slice(0, idx) + newTask + body.slice(idx);
+    // Insere logo abaixo do cabeçalho existente (em cima da lista)
+    const headerLine = sectionMatch[0];
+    const idx = body.indexOf(headerLine) + headerLine.length;
+    
+    const prefix = body.slice(0, idx);
+    const suffix = body.slice(idx);
+    
+    // Garante que o item fique logo após o título, mantendo parágrafo se necessário
+    newBody = prefix + "\n" + newTask + suffix.replace(/^\n+/, "");
   }
   
   await writeDaily({ filePath, fmObj, body: newBody });
-  return { filePath, task: taskText };
+  return { filePath, task: taskText, dateStr };
+}
+
+async function removeTaskFromSection({ dateStr, taskText }) {
+  const { filePath, fmObj, body } = await readDaily({ dateStr });
+  const lines = body.split("\n");
+  const filtered = lines.filter(l => l.trim() !== ` - [ ] ${taskText.trim()}`);
+  await writeDaily({ filePath, fmObj, body: filtered.join("\n") });
+  return { filePath, removed: taskText };
 }
 
 module.exports = {
-  vaultPath,
-  dailyFolder,
-  cutOff,
-  splitFrontmatter,
-  buildFrontmatter,
-  ensureDailyNote,
-  readDaily,
-  writeDaily,
-  appendTaskToSection,
-  upsertRootKey,
-  time: {
+    vaultPath,
+    dailyFolder,
+    cutOff,
+    splitFrontmatter,
+    buildFrontmatter,
+    ensureDailyNote,
+    readDaily,
+    writeDaily,
+    appendTaskToSection,
+    removeTaskFromSection,
+    upsertRootKey,
+    time: {
     toIsoMinuteZ,
     dateFromTsUTC,
     shiftDateStrUTC,

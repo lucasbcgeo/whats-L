@@ -1,5 +1,6 @@
 const { upsertRootKey, time } = require("./obsidianService");
 const { parseDurationToISO } = require("../utils/duration");
+const { getKey, getTriggerMapping } = require("../config/commands");
 
 const { toIsoMinuteZ, dateFromTsUTC, shiftDateStrUTC, getSonoDormiDate, getLocalCalendarDate, msToISODuration } = time;
 
@@ -23,6 +24,21 @@ function normalizeCmd(text) {
     return (text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+function buildFoodIndexMap() {
+    const mapping = getTriggerMapping("food");
+    if (!mapping) return {};
+    const map = {};
+    for (const [subKey, config] of Object.entries(mapping)) {
+        for (const variation of config.variations) {
+            const norm = normalizeCmd(variation);
+            map[norm] = config.index;
+        }
+    }
+    return map;
+}
+
+const FOOD_CMD_MAP = buildFoodIndexMap();
+
 function parseBooleanMetric(parsed, defaultValue = true) {
     if (!parsed || !parsed.args) return defaultValue;
     return !parsed.args.some(a => ["não", "nao", "no", "false"].includes(normalizeCmd(a)));
@@ -37,82 +53,63 @@ function parseScaleMetric(parsed) {
     return null;
 }
 
+function upsert({ dateStr, key, mutator, undo }) {
+    return upsertRootKey({ dateStr, key, mutator }).then(r => ({ ...r, undo }));
+}
+
+// Maps handler names to metric types (business logic)
+const METRIC_TYPES = {
+    anxiety:        "scale",
+    exercise:       "boolean",
+    procrastination: "scale",
+    leisure:        "boolean",
+    reading:        "boolean",
+    games:          "duration",
+    screenTime:     "duration",
+    food:           "food",
+    sleep_bed:      "sleep_dormi",
+    sleep_wake:     "sleep_acordei",
+};
+
 async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options = {} }) {
     const ts = timestamp;
     const ds = dateStr || getLogicalDate(ts);
+    const type = METRIC_TYPES[metric];
 
-    switch (metric) {
-        case "ansiedade": {
+    if (!type) {
+        console.log(`[METRIC_SERVICE] Metric desconhecida: ${metric}`);
+        return;
+    }
+
+    const key = getKey(metric) || metric;
+
+    switch (type) {
+        case "scale": {
             const v = value ?? parseScaleMetric(rawArgs);
-            if (v === null) { console.log("[ANSIEDADE] Valor invalido (0-10)."); return; }
-            return await upsertRootKey({
-                dateStr: ds, key: "ansiedade",
+            if (v === null) { console.log(`[METRIC] Valor invalido (0-10) para ${metric}.`); return; }
+            return await upsert({
+                dateStr: ds, key,
                 mutator: (cur) => {
                     if (cur !== undefined && cur !== null && !options.force) return cur;
                     return v;
                 },
+                undo: { type: "scalar" },
             });
         }
 
-        case "exercicio": {
+        case "boolean": {
             const v = value ?? parseBooleanMetric(rawArgs, true);
-            return await upsertRootKey({
-                dateStr: ds, key: "exercicio",
+            return await upsert({
+                dateStr: ds, key,
                 mutator: (cur) => {
                     if (cur !== undefined && cur !== null && !options.force) return cur;
                     return v;
                 },
+                undo: { type: "scalar" },
             });
         }
 
-        case "procrastinacao": {
-            const v = value ?? parseScaleMetric(rawArgs);
-            if (v === null) { console.log("[PROCRASTINACAO] Valor invalido (0-10)."); return; }
-            return await upsertRootKey({
-                dateStr: ds, key: "procrastinacao",
-                mutator: (cur) => {
-                    if (cur !== undefined && cur !== null && !options.force) return cur;
-                    return v;
-                },
-            });
-        }
-
-        case "lazer": {
-            const v = value ?? parseBooleanMetric(rawArgs, true);
-            return await upsertRootKey({
-                dateStr: ds, key: "lazer",
-                mutator: (cur) => {
-                    if (cur !== undefined && cur !== null && !options.force) return cur;
-                    return v;
-                },
-            });
-        }
-
-        case "leitura": {
-            const v = value ?? parseBooleanMetric(rawArgs, true);
-            return await upsertRootKey({
-                dateStr: ds, key: "leitura",
-                mutator: (cur) => {
-                    if (cur !== undefined && cur !== null && !options.force) return cur;
-                    return v;
-                },
-            });
-        }
-
-        case "games": {
-            const text = value || (rawArgs?.args || []).filter(a => !["correção", "correcao", "force"].includes(normalizeCmd(a))).join(" ");
-            const isoDuration = parseDurationToISO(text);
-            if (!isoDuration) { console.log("[GAMES] Duracao invalida."); return; }
-            return await upsertRootKey({
-                dateStr: ds, key: "games",
-                mutator: (cur) => {
-                    if (cur && !options.force) return cur;
-                    return isoDuration;
-                },
-            });
-        }
-
-        case "tempo_tela": {
+        case "duration": {
             let text = value;
             if (!text && rawArgs?.args) {
                 let args = rawArgs.args.filter(a => !["correção", "correcao", "force"].includes(normalizeCmd(a)));
@@ -121,25 +118,23 @@ async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options 
                 text = args.join(" ");
             }
             const isoDuration = parseDurationToISO(text);
-            if (!isoDuration) { console.log("[TEMPO_TELA] Duracao invalida."); return; }
-            return await upsertRootKey({
-                dateStr: ds, key: "tempo_tela",
+            if (!isoDuration) { console.log(`[METRIC] Duracao invalida para ${metric}.`); return; }
+            return await upsert({
+                dateStr: ds, key,
                 mutator: (cur) => {
                     if (cur && !options.force) return cur;
                     return isoDuration;
                 },
+                undo: { type: "scalar" },
             });
         }
 
-        case "alimentacao": {
+        case "food": {
             const cmd = normalizeCmd(rawArgs?.cmd || "");
             const iso = toIsoMinuteZ(ts);
-            let index = -1;
-            if (cmd === "cafe") index = 0;
-            if (cmd === "almoco") index = 1;
-            if (cmd === "janta") index = 2;
-            return await upsertRootKey({
-                dateStr: ds, key: "alimentacao",
+            const index = FOOD_CMD_MAP[cmd] ?? -1;
+            return await upsert({
+                dateStr: ds, key,
                 mutator: (cur) => {
                     const arr = ensureArray(cur);
                     if (index >= 0) {
@@ -152,14 +147,17 @@ async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options 
                     }
                     return arr;
                 },
+                undo: { type: "array_value", value: iso },
             });
         }
 
-        case "sono_dormi": {
+        case "sleep_dormi": {
+            const sleepKey = getKey("sleep") || "sono";
             const dormiuISO = toIsoMinuteZ(ts);
             const dateStrDormiu = options.dateStr || getSonoDormiDate(ts);
-            return await upsertRootKey({
-                dateStr: dateStrDormiu, key: "sono",
+            const prevDate = shiftDateStrUTC(dateStrDormiu, -1);
+            const r = await upsertRootKey({
+                dateStr: dateStrDormiu, key: sleepKey,
                 mutator: (cur) => {
                     const sono = ensureSonoArray(cur);
                     if (sono[1] && !options.force) return sono;
@@ -169,13 +167,22 @@ async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options 
                     return sono;
                 },
             });
+            r.undo = {
+                type: "sono",
+                ops: [
+                    { dateStr: dateStrDormiu, key: sleepKey, slot: 1 },
+                    { dateStr: prevDate, key: sleepKey, slot: 2 },
+                ],
+            };
+            return r;
         }
 
-        case "sono_acordei": {
+        case "sleep_acordei": {
+            const sleepKey = getKey("sleep") || "sono";
             const acordouISO = toIsoMinuteZ(ts);
             const today = getLocalCalendarDate(ts);
             await upsertRootKey({
-                dateStr: today, key: "sono",
+                dateStr: today, key: sleepKey,
                 mutator: (cur) => {
                     const sono = ensureSonoArray(cur);
                     if (sono[0] && !options.force) return sono;
@@ -185,8 +192,8 @@ async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options 
                 },
             });
             const prevDate = shiftDateStrUTC(today, -1);
-            return await upsertRootKey({
-                dateStr: prevDate, key: "sono",
+            const r = await upsertRootKey({
+                dateStr: prevDate, key: sleepKey,
                 mutator: (cur) => {
                     const sono = ensureSonoArray(cur);
                     const dormiuISO = sono[1];
@@ -200,10 +207,18 @@ async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options 
                     return sono;
                 },
             });
+            r.undo = {
+                type: "sono",
+                ops: [
+                    { dateStr: today, key: sleepKey, slot: 0 },
+                    { dateStr: prevDate, key: sleepKey, slot: 2 },
+                ],
+            };
+            return r;
         }
 
         default:
-            console.log(`[METRIC_SERVICE] Metric desconhecida: ${metric}`);
+            console.log(`[METRIC_SERVICE] Tipo desconhecido: ${type} para ${metric}`);
             return;
     }
 }

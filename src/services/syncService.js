@@ -1,10 +1,20 @@
 const { getTargetChats } = require("../lib/whatsappClient");
 const { checkpoint } = require("./dedupeService");
 const { BACKFILL_LIMIT } = require("../config/env");
+const { data } = require("../config/commands");
+
+function getForwardSourceNumbers() {
+    const numbers = [];
+    for (const profile of Object.values(data.profiles || {})) {
+        if (profile.match?.numbers) {
+            numbers.push(...profile.match.numbers);
+        }
+    }
+    return [...new Set(numbers)];
+}
 
 async function syncMissedMessagesByCheckpoint(processMessageFn) {
-  const { FORWARD_SOURCE_NUMBERS } = require("../config/env");
-  const targetChats = await getTargetChats(FORWARD_SOURCE_NUMBERS);
+  const targetChats = await getTargetChats(getForwardSourceNumbers());
 
   if (targetChats.length === 0) {
     console.log("⚠️ Nenhum chat alvo encontrado para sync.");

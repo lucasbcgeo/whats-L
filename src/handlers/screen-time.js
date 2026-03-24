@@ -1,15 +1,14 @@
 const { metricService } = require("../services/metricService");
 const { hasForceFlag } = require("../utils/parse");
+const { getHandlerForTrigger } = require("../config/commands");
 
 module.exports = {
     match({ parsed }) {
         if (!parsed) return false;
-        const { cmd } = parsed;
-        return cmd === "acordei" || cmd === "dormi";
+        return getHandlerForTrigger(parsed.cmd) === "screenTime";
     },
     async handle({ msg, parsed }) {
         const force = hasForceFlag(parsed.args);
-        const metric = parsed.cmd === "dormi" ? "sono_dormi" : "sono_acordei";
-        return await metricService.saveMetric({ metric, timestamp: msg.timestamp, rawArgs: parsed, options: { force } });
+        return await metricService.saveMetric({ metric: "screenTime", timestamp: msg.timestamp, rawArgs: parsed, options: { force } });
     },
 };

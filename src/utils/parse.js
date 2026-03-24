@@ -3,9 +3,10 @@ function parseCommand(text) {
     if (!raw.startsWith("#")) return null;
 
     const parts = raw.split(/\s+/);
-    const cmd = parts[0].slice(1).toLowerCase();
+    const cmdRaw = parts[0].slice(1).toLowerCase();
+    const cmd = cmdRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const args = parts.slice(1);
-    return { raw, cmd, args };
+    return { raw, cmd, cmdRaw, args };
 }
 
 function hasForceFlag(args) {

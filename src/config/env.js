@@ -1,15 +1,11 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
+
 module.exports = {
   VAULT: process.env.OBSIDIAN_VAULT_PATH,
   DAILY_FOLDER: process.env.DAILY_FOLDER,
   GROUP_ID: process.env.GROUP_ID,
-  GROUP_NAME: process.env.GROUP_NAME,
-  DORMIR_MADRUGADA_ATE: Number(process.env.DORMIR_MADRUGADA_ATE ?? 5),
+  DAILY_LOG_CUTOFF: Number(process.env.DAILY_LOG_CUTOFF ?? 5),
   BACKFILL_LIMIT: Number(process.env.BACKFILL_LIMIT ?? 500),
-  FORWARD_SOURCE_NUMBERS: (process.env.FORWARD_SOURCE_NUMBERS || "").split(",").map(n => n.trim()).filter(Boolean),
-  TARGET_FORWARD_GROUP_NAME: process.env.TARGET_FORWARD_GROUP_NAME,
-  HEADER_SYNC_FILE: process.env.HEADER_SYNC_FILE,
-  HEADER_SYNC_GROUP_ID: process.env.HEADER_SYNC_GROUP_ID,
   WHISPER_MODEL_PATH: process.env.WHISPER_MODEL_PATH || "models/ggml-base.bin",
   AUDIO_SOURCE_NUMBERS: (process.env.AUDIO_SOURCE_NUMBERS || "").split(",").map(n => n.trim()).filter(Boolean),
 };

@@ -1,27 +1,30 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
 const { client } = require("./lib/whatsappClient");
 const { checkpoint } = require("./services/dedupeService");
 const { syncMissedMessagesByCheckpoint } = require("./services/syncService");
-const { syncHeaders } = require("./services/headerSyncService");
+const { startWatching } = require("./services/headerWatcherService");
 const { parseCommand } = require("./utils/parse");
 const { isProcessed, markProcessed } = require("./core/dedupe");
+const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
 const handlers = require("./handlers");
-const { GROUP_ID, GROUP_NAME, FORWARD_SOURCE_NUMBERS } = require("./config/env");
+const fileForwarderAuto = require("./handlers/file-forwarder-auto");
+const { resolveProfile, isHandlerAllowed, isGroupAllowed } = require("./config/commands");
 
 async function processMessage(msg, { silent } = { silent: false }) {
     try {
+        console.log("[MSG IN]", msg?.id?._serialized, msg.type, msg.hasMedia ? "MEDIA" : "TEXT");
         if (isProcessed(msg)) return false;
 
         const chat = await msg.getChat();
-        const isAuthorizedDM = !chat.isGroup && FORWARD_SOURCE_NUMBERS.includes(msg.from);
+        const profile = resolveProfile({
+            groupName: chat.isGroup ? chat.name : null,
+            number: !chat.isGroup ? msg.from : null,
+        });
 
-        if (!chat.isGroup && !isAuthorizedDM) return false;
+        if (!chat.isGroup && !profile) return false;
 
-        if (chat.isGroup) {
-            if (GROUP_ID && chat.id?._serialized !== GROUP_ID) return false;
-            if (!GROUP_ID && GROUP_NAME && chat.name !== GROUP_NAME) return false;
-        }
+        if (chat.isGroup && profile && !isGroupAllowed(profile, chat.name)) return false;
 
         const parsed = parseCommand(msg.body);
 
@@ -29,16 +32,36 @@ async function processMessage(msg, { silent } = { silent: false }) {
             console.log("\n===== PROCESSANDO MENSAGEM =====");
             console.log("[FROM]", msg.from);
             if (chat.isGroup) console.log("[GROUP]", chat.name);
+            console.log("[PROFILE]", profile || "none");
             console.log("[RAW BODY]", msg.body || "(mídia)");
             console.log("[MSG ID]", msg?.id?._serialized);
+            console.log("[MSG TYPE]", msg.type);
+            console.log("[HAS MEDIA]", msg.hasMedia);
             console.log("[TIMESTAMP]", msg.timestamp);
             if (parsed) console.log("[PARSED]", parsed);
         }
 
-        for (const h of handlers) {
+        for (const { name, handler: h } of handlers) {
+            if (!isHandlerAllowed(profile, name)) {
+                if (!silent) console.log("[HANDLER SKIP]", name, "- not allowed for profile", profile);
+                continue;
+            }
             if (h.match({ msg, parsed, chat })) {
-                if (!silent) console.log("[HANDLER EXEC]", h.constructor?.name || "handler");
-                await h.handle({ msg, parsed, chat });
+                if (!silent) console.log("[HANDLER EXEC]", name);
+                const result = await h.handle({ msg, parsed, chat, profile });
+
+                if (result && result.key) {
+                    const metric = getHandlerMetricName(h);
+                    if (metric) {
+                        saveUndoContext(msg.id?._serialized, {
+                            metric,
+                            timestamp: msg.timestamp,
+                            key: result.key,
+                            value: result.value,
+                        });
+                    }
+                }
+
                 markProcessed(msg);
                 checkpoint.setLastTs(msg.timestamp);
                 if (!silent) console.log("[DONE] mensagem processada");
@@ -57,10 +80,24 @@ async function processMessage(msg, { silent } = { silent: false }) {
 
 client.on("ready", async () => {
     console.log("✅ Conectado.");
+    fileForwarderAuto.checkAllSources();
     await syncMissedMessagesByCheckpoint(processMessage);
-    await syncHeaders(client);
+    startWatching(client);
 });
 
 client.on("message_create", processMessage);
+
+client.on("message_revoke_everyone", async (msg) => {
+    const msgId = msg?.id?._serialized;
+    if (!msgId) return;
+    console.log("\n===== MENSAGEM APAGADA =====");
+    console.log("[MSG ID]", msgId);
+    const success = await undoMetric(msgId);
+    if (success) {
+        console.log("[UNDO] Registro revertido com sucesso.");
+    } else {
+        console.log("[UNDO] Nenhum registro para reverter.");
+    }
+});
 
 client.initialize();

@@ -1,11 +1,11 @@
 const { metricService } = require("../services/metricService");
 const { hasForceFlag } = require("../utils/parse");
+const { getHandlerForTrigger } = require("../config/commands");
 
 module.exports = {
     match({ parsed }) {
         if (!parsed) return false;
-        const c = parsed.cmd.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        return c === "procrastinacao";
+        return getHandlerForTrigger(parsed.cmd) === "anxiety";
     },
     async handle({ msg, parsed }) {
         const force = hasForceFlag(parsed.args);
@@ -15,9 +15,9 @@ module.exports = {
             if (!isNaN(n) && n >= 0 && n <= 10) { value = n; break; }
         }
         if (value === null) {
-            console.log("[PROCRASTINACAO] Valor invalido (0-10). Recebido:", parsed.args);
+            console.log("[ANXIETY] Valor invalido (0-10). Recebido:", parsed.args);
             return;
         }
-        return await metricService.saveMetric({ metric: "procrastinacao", value, timestamp: msg.timestamp, rawArgs: parsed, options: { force } });
+        return await metricService.saveMetric({ metric: "anxiety", value, timestamp: msg.timestamp, rawArgs: parsed, options: { force } });
     },
 };

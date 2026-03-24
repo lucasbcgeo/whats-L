@@ -1,32 +1,31 @@
-const { AUDIO_SOURCE_NUMBERS, REF_BOT } = require("../config/env");
+const { AUDIO_SOURCE_NUMBERS } = require("../config/env");
 
-const KEYWORD_MAP = [
-  { kw: "tarefa", cmd: "tarefa" },
-  { kw: "encaminhar", cmd: "encaminhar" },
-  { kw: "cafe", cmd: "cafe" },
-  { kw: "almoco", cmd: "almoco" },
-  { kw: "almocei", cmd: "almoco" },
-  { kw: "janta", cmd: "janta" },
-  { kw: "jantei", cmd: "janta" },
-  { kw: "lanche", cmd: "lanche" },
-  { kw: "dormi", cmd: "dormi" },
-  { kw: "acordei", cmd: "acordei" },
-  { kw: "exercicio", cmd: "exercicio" },
-  { kw: "games", cmd: "games" },
-  { kw: "tempo tela", cmd: "tempo" },
-  { kw: "tela", cmd: "tempo" },
-  { kw: "procrastinacao", cmd: "procrastinacao" },
-  { kw: "ansiedade", cmd: "ansiedade" },
-  { kw: "lazer", cmd: "lazer" },
-  { kw: "leitura", cmd: "leitura" },
-];
+const { data } = require("../config/commands");
+
+const KEYWORD_MAP = [];
+for (const [handler, config] of Object.entries(data.commands || {})) {
+  const triggers = config.triggers;
+  if (Array.isArray(triggers)) {
+    for (const trigger of triggers) {
+      const normKw = trigger.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      KEYWORD_MAP.push({ kw: normKw, cmd: trigger });
+    }
+  } else if (typeof triggers === "object") {
+    for (const [subKey, subConfig] of Object.entries(triggers)) {
+      for (const variation of subConfig.variations) {
+        const normKw = variation.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        KEYWORD_MAP.push({ kw: normKw, cmd: variation });
+      }
+    }
+  }
+}
 
 function fuzzyParseCommand(text) {
-  const lower = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const normalized = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   for (const { kw, cmd } of KEYWORD_MAP) {
-    if (lower.includes(kw)) {
-      const idx = lower.indexOf(kw);
-      const after = lower.slice(idx + kw.length).trim();
+    if (normalized.includes(kw)) {
+      const idx = normalized.indexOf(kw);
+      const after = normalized.slice(idx + kw.length).trim();
       const args = after ? after.split(/\s+/) : [];
       return { raw: `#${cmd}${args.length ? " " + args.join(" ") : ""}`, cmd, args, _fuzzy: true };
     }
@@ -34,7 +33,6 @@ function fuzzyParseCommand(text) {
   return null;
 }
 const { transcribeAudio } = require("../services/transcriptionService");
-const { appendTaskToSection } = require("../lib/obsidianClient");
 const { parseCommand } = require("../utils/parse");
 const { time } = require("../services/obsidianService");
 const { getHandlerMetricName, saveUndoContext } = require("../services/undoService");
@@ -53,10 +51,16 @@ async function convertToWav(inputPath, outputPath) {
   });
 }
 
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${label} (${ms}ms)`)), ms)),
+  ]);
+}
+
 module.exports = {
   match({ msg, chat }) {
     if (!chat?.isGroup) return false;
-    if (REF_BOT && chat.name !== REF_BOT) return false;
     return msg.hasMedia && (msg.type === "audio" || msg.type === "ptt");
   },
 
@@ -69,9 +73,10 @@ module.exports = {
     let tempWav = null;
 
     try {
-      const media = await msg.downloadMedia();
+      const media = await withTimeout(msg.downloadMedia(), 30000, "downloadMedia");
       if (!media) {
         console.error("[AUDIO HANDLER] Mídia não disponível ou expirada.");
+        try { await msg.reply("Não consegui baixar o áudio. Pode ter expirado. Tente enviar novamente."); } catch {}
         return;
       }
 
@@ -80,43 +85,36 @@ module.exports = {
       tempWav = path.join(tempDir, `audio-${Date.now()}.wav`);
 
       await fs.writeFile(tempInput, media.data, "base64");
-      await convertToWav(tempInput, tempWav);
+      await withTimeout(convertToWav(tempInput, tempWav), 30000, "convertToWav");
 
       console.log("[AUDIO HANDLER] Transcrevendo...");
-      const transcription = await transcribeAudio(tempWav);
+      const transcription = await withTimeout(transcribeAudio(tempWav), 120000, "transcribeAudio");
       console.log("[AUDIO HANDLER] Transcrição:", transcription);
 
-      const trimmed = transcription.trim().toLowerCase();
+      if (!transcription || !transcription.trim()) {
+        console.log("[AUDIO HANDLER] Transcrição vazia.");
+        try { await msg.reply("Não consegui entender o áudio. Tente falar mais claramente."); } catch {}
+        return;
+      }
 
-      if (trimmed.startsWith("tarefa")) {
-        const taskText = trimmed.slice(7).trim();
-        const dateStr = getLogicalDate(msg.timestamp);
-        const result = await appendTaskToSection({ dateStr, taskText });
-        console.log("[AUDIO HANDLER] Tarefa adicionada:", taskText);
-        saveUndoContext(msg.id?._serialized, {
-          metric: "tarefa",
-          timestamp: msg.timestamp,
-          key: "__tarefa__",
-          value: taskText,
-        });
-      } else {
+      const trimmed = transcription.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      let parsed = null;
 
-        let parsed = null;
+      const registroMatch = trimmed.match(/^registro\s+(.+)/);
+      if (registroMatch) {
+        parsed = parseCommand("#" + registroMatch[1].trim());
+        if (parsed) console.log("[AUDIO HANDLER] Registro prefix match:", parsed.raw);
+      }
 
-        // Áudio: apenas "registro" ativa os handlers
-        const registroMatch = trimmed.match(/^registro\s+(.+)/);
-        if (registroMatch) {
-          parsed = parseCommand("#" + registroMatch[1].trim());
-          if (parsed) console.log("[AUDIO HANDLER] Registro prefix match:", parsed.raw);
-        }
+      if (!parsed) {
+        parsed = fuzzyParseCommand(trimmed);
+        if (parsed) console.log("[AUDIO HANDLER] Fuzzy match:", parsed.raw);
+      }
 
-        if (!parsed) {
-          parsed = fuzzyParseCommand(trimmed);
-          if (parsed) console.log("[AUDIO HANDLER] Fuzzy match:", parsed.raw);
-        }
-        if (parsed) {
-          for (const h of require("./index.js")) {
-            if (h !== module.exports && h.match({ msg, parsed, chat })) {
+      if (parsed) {
+        for (const h of require("./index.js")) {
+          if (h !== module.exports && h.match({ msg, parsed, chat })) {
+            try {
               const result = await h.handle({ msg, parsed, chat });
               console.log("[AUDIO HANDLER] Handler executado:", h.constructor?.name || "handler");
 
@@ -131,16 +129,21 @@ module.exports = {
                   });
                 }
               }
-
-              break;
+            } catch (handlerErr) {
+              console.error("[AUDIO HANDLER] Erro no handler delegado:", handlerErr.message);
+              try { await msg.reply("Erro ao executar o comando do áudio."); } catch {}
             }
+            break;
           }
-        } else {
-          console.log("[AUDIO HANDLER] Transcricao nao reconhecida:", trimmed);
         }
+      } else {
+        console.log("[AUDIO HANDLER] Transcricao nao reconhecida:", trimmed);
+        const allTriggers = require("../config/commands").getAllTriggers().join(", ");
+        try { await msg.reply(`Não reconheci um comando no áudio. Comandos: ${allTriggers}`); } catch {}
       }
     } catch (e) {
       console.error("[AUDIO HANDLER] Erro:", e.message);
+      try { await msg.reply("Erro ao processar o áudio. Tente novamente."); } catch {}
     } finally {
       if (tempInput) await fs.remove(tempInput).catch(() => {});
       if (tempWav) await fs.remove(tempWav).catch(() => {});

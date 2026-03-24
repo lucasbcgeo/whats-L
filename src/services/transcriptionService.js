@@ -3,27 +3,29 @@ const path = require("path");
 const fs = require("fs-extra");
 const os = require("os");
 const { WHISPER_MODEL_PATH } = require("../config/env");
-const logger = require("../utils/logger");
 
-async function transcribeAudio(audioPath, modelSize = "base") {
-  const modelPath = WHISPER_MODEL_PATH || modelSize;
-  
-  const tempOutput = path.join(os.tmpdir(), `whisper-${Date.now()}`);
+async function transcribeAudio(audioPath) {
+  const modelPath = WHISPER_MODEL_PATH || "medium";
   const outputDir = os.tmpdir();
+  const baseName = path.basename(audioPath, ".wav");
+  const txtPath = path.join(outputDir, `${baseName}.txt`);
 
   return new Promise((resolve, reject) => {
-    const cmd = `python -m whisper "${audioPath}" --model ${modelPath} --language pt --output_dir "${outputDir}" --output_file "${path.basename(tempOutput)}"`;
-    logger.info(`[TRANSCRIPTION] Executando: ${cmd}`);
+    const cmd = `set PYTHONIOENCODING=utf-8 && python -m whisper "${audioPath}" --model ${modelPath} --language pt --initial_prompt "Transcreva em portugues brasileiro. Comandos: cafe, almoco, janta, acordei, dormi, exercicio, games, procrastinacao, ansiedade, lazer, leitura, tarefa, encaminhar." --output_dir "${outputDir}"`;
+    console.log(`[TRANSCRIPTION] Executando: ${modelPath}`);
 
-    exec(cmd, { shell: true }, async (error, stdout, stderr) => {
+    const child = exec(cmd, { shell: true, maxBuffer: 10 * 1024 * 1024, timeout: 110000 }, async (error, stdout, stderr) => {
       try {
-        const txtPath = `${tempOutput}.txt`;
         if (await fs.pathExists(txtPath)) {
           const text = (await fs.readFile(txtPath, "utf8")).trim();
           await fs.remove(txtPath);
           resolve(text);
         } else if (error) {
-          reject(new Error(`Transcription failed: ${error.message}`));
+          if (error.killed) {
+            reject(new Error("Transcription timeout (110s)"));
+          } else {
+            reject(new Error(`Transcription failed: ${error.message}`));
+          }
         } else {
           reject(new Error("Transcription failed - no output file"));
         }

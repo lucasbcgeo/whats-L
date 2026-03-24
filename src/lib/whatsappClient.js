@@ -1,16 +1,73 @@
+const path = require("path");
 const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth } = require("whatsapp-web.js");
-const { GROUP_ID, GROUP_NAME } = require("../config/env");
+const { GROUP_ID } = require("../config/env");
+const { data } = require("../config/commands");
+
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 10;
 
 const client = new Client({
-  authStrategy: new LocalAuth({ clientId: "obsidian-life" }),
-  puppeteer: { headless: true },
+  authStrategy: new LocalAuth({ 
+    clientId: "obsidian-life-v3",
+    dataPath: path.join(__dirname, '..', '..', '.wwebjs_auth')
+  }),
+  puppeteer: {
+    headless: true,
+    executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-extensions'
+    ]
+  }
 });
 
 client.on("qr", (qr) => {
   console.log("Escaneie o QR no WhatsApp:");
   qrcode.generate(qr, { small: true });
 });
+
+client.on("auth_failure", (msg) => {
+  console.error("❌ Auth failure:", msg);
+});
+
+client.on("disconnected", (reason) => {
+  console.log("[WHATSAPP] Desconectado:", reason);
+  scheduleReconnect();
+});
+
+client.on("remote_session_saved", () => {
+  console.log("Sessão salva");
+});
+
+client.on("ready", () => {
+  reconnectAttempts = 0;
+  console.log("[WHATSAPP] Cliente pronto.");
+});
+
+function scheduleReconnect() {
+  if (reconnectAttempts >= MAX_RECONNECT) {
+    console.error("[WHATSAPP] Máximo de reconexões atingido. Reinicie o processo.");
+    return;
+  }
+  reconnectAttempts++;
+  const delay = Math.min(5000 * reconnectAttempts, 60000);
+  console.log(`[WHATSAPP] Reconectando em ${delay / 1000}s (${reconnectAttempts}/${MAX_RECONNECT})...`);
+  setTimeout(async () => {
+    try {
+      await client.destroy();
+    } catch {}
+    try {
+      await client.initialize();
+    } catch (e) {
+      console.error("[WHATSAPP] Falha ao reconectar:", e.message);
+      scheduleReconnect();
+    }
+  }, delay);
+}
 
 async function getTargetGroup() {
   if (GROUP_ID) {
@@ -20,9 +77,11 @@ async function getTargetGroup() {
     } catch {}
   }
 
-  if (!GROUP_NAME) return null;
+  const adminGroupName = data.profiles?.admin?.match?.groupName;
+  if (!adminGroupName) return null;
   const chats = await client.getChats();
-  return chats.find((c) => c.isGroup && c.name === GROUP_NAME) || null;
+  const target = chats.find((c) => c.isGroup && c.name === adminGroupName);
+  return target || null;
 }
 
 async function getTargetChats(additionalIds = []) {
