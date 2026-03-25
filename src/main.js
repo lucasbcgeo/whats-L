@@ -1,5 +1,8 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
+const { patchConsole } = require("./utils/logger");
+patchConsole();
+
 const { client } = require("./lib/whatsappClient");
 const { checkpoint } = require("./services/dedupeService");
 const { syncMissedMessagesByCheckpoint } = require("./services/syncService");
@@ -22,6 +25,10 @@ async function processMessage(msg, { silent } = { silent: false }) {
             number: !chat.isGroup ? msg.from : null,
         });
 
+        console.log("[DEBUG] msg.from:", msg.from);
+        console.log("[DEBUG] chat.isGroup:", chat.isGroup);
+        console.log("[DEBUG] resolved profile:", profile);
+
         if (!chat.isGroup && !profile) return false;
 
         if (chat.isGroup && profile && !isGroupAllowed(profile, chat.name)) return false;
@@ -42,10 +49,12 @@ async function processMessage(msg, { silent } = { silent: false }) {
         }
 
         for (const { name, handler: h } of handlers) {
-            if (!isHandlerAllowed(profile, name)) {
+            const allowed = isHandlerAllowed(profile, name);
+            if (!allowed) {
                 if (!silent) console.log("[HANDLER SKIP]", name, "- not allowed for profile", profile);
                 continue;
             }
+            console.log("[DEBUG] checking handler:", name, "allowed:", allowed);
             if (h.match({ msg, parsed, chat })) {
                 if (!silent) console.log("[HANDLER EXEC]", name);
                 const result = await h.handle({ msg, parsed, chat, profile });

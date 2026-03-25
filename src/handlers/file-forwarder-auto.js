@@ -38,7 +38,18 @@ async function getTargetGroup(client, targetGroupName) {
 }
 
 function getSourceInfo(from) {
-    return SOURCE_CONFIG[from] || null;
+    console.log(`[DEBUG FILE FORWARDER] getSourceInfo checking from: ${from}`);
+    console.log(`[DEBUG FILE FORWARDER] SOURCE_CONFIG keys: ${Object.keys(SOURCE_CONFIG).join(', ')}`);
+    if (SOURCE_CONFIG[from]) return SOURCE_CONFIG[from];
+    for (const [num, config] of Object.entries(SOURCE_CONFIG)) {
+        const fromNum = from.split('@')[0];
+        const configNum = num.split('@')[0];
+        console.log(`[DEBUG FILE FORWARDER] comparing: "${fromNum}" vs "${configNum}"`);
+        if (from.includes(num.split('@')[0]) || num.split('@')[0].includes(from.split('@')[0])) {
+            return config;
+        }
+    }
+    return null;
 }
 
 function checkOverdue(sourceNum, config, state) {
@@ -54,14 +65,28 @@ function checkOverdue(sourceNum, config, state) {
 module.exports = {
     match({ msg }) {
         const from = msg.from;
+        console.log(`[DEBUG FILE FORWARDER] match called with from: ${from}, hasMedia: ${msg.hasMedia}`);
         const config = getSourceInfo(from);
-        if (!config) return false;
+        if (!config) {
+            console.log(`[DEBUG FILE FORWARDER] no config found for ${from}`);
+            return false;
+        }
+        console.log(`[DEBUG FILE FORWARDER] config found: ${config.label}`);
         if (msg._data && (msg._data.type === 'interactive' || msg._data.type === 'list')) return false;
-        if (!msg.hasMedia) return false;
+        if (!msg.hasMedia) {
+            console.log(`[DEBUG FILE FORWARDER] no media, skipping`);
+            return false;
+        }
 
         const state = loadState();
-        const entry = state[from];
-        if (entry && entry.lastForwardTs && msg.timestamp <= entry.lastForwardTs) return false;
+        const matchedKey = Object.keys(SOURCE_CONFIG).find(key => 
+            from.includes(key.split('@')[0]) || key.split('@')[0].includes(from.split('@')[0])
+        );
+        const entry = state[matchedKey];
+        if (entry && entry.lastForwardTs && msg.timestamp <= entry.lastForwardTs) {
+            console.log(`[DEBUG FILE FORWARDER] message too old, skipping`);
+            return false;
+        }
 
         return true;
     },
@@ -73,6 +98,10 @@ module.exports = {
         const dateStr = new Date(msg.timestamp * 1000).toLocaleString();
 
         console.log(`\n[FILE FORWARDER] ${config.label} | ${from} | ${dateStr}`);
+
+        const matchedKey = Object.keys(SOURCE_CONFIG).find(key => 
+            from.includes(key.split('@')[0]) || key.split('@')[0].includes(from.split('@')[0])
+        );
 
         try {
             const media = await msg.downloadMedia();
@@ -91,16 +120,16 @@ module.exports = {
             await targetGroup.sendMessage(media, { caption: `[${config.label}] ${msg.body || ""}`.trim() });
 
             const state = loadState();
-            state[from] = {
+            state[matchedKey] = {
                 label: config.label,
                 lastForwardTs: msg.timestamp,
                 lastForwardDate: new Date(msg.timestamp * 1000).toISOString(),
             };
             saveState(state);
 
-            console.log(`[FILE FORWARDER] Sucesso: Arquivo de ${config.label} encaminhado.`);
+            console.log(`[FILE FORWARDER] Sucesso: Arquivo de ${config.label} incrementado.`);
 
-            checkOverdue(from, config, state);
+            checkOverdue(matchedKey, config, state);
         } catch (e) {
             console.error(`[FILE FORWARDER] Erro: ${e.message}`);
         }
