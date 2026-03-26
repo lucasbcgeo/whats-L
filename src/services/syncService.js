@@ -1,7 +1,7 @@
 const { getTargetChats } = require("../lib/whatsappClient");
 const { checkpoint } = require("./dedupeService");
 const { BACKFILL_LIMIT } = require("../config/env");
-const { data } = require("../config/commands");
+const { data } = require("../config");
 
 function getForwardSourceNumbers() {
     const numbers = [];

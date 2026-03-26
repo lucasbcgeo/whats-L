@@ -1,6 +1,6 @@
 const { metricService } = require("../services/metricService");
 const { hasForceFlag } = require("../utils/parse");
-const { getHandlerForTrigger } = require("../config/commands");
+const { getHandlerForTrigger } = require("../config");
 
 module.exports = {
     match({ parsed }) {

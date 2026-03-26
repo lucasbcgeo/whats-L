@@ -22,7 +22,7 @@ const { isProcessed, markProcessed } = require("./core/dedupe");
 const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
 const handlers = require("./handlers");
 const fileForwarderAuto = require("./handlers/file-forwarder-auto");
-const { resolveProfile, isHandlerAllowed, isGroupAllowed } = require("./config/commands");
+const { resolveProfile, isHandlerAllowed, isGroupAllowed } = require("./config");
 
 async function processMessage(msg, { silent } = { silent: false }) {
     try {

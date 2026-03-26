@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const COMMANDS_FILE = path.join(__dirname, "..", "..", "data", "commands.json");
+const COMMANDS_FILE = path.join(__dirname, "..", "..", "data", "config.json");
 
 let data = { commands: {}, sources: {}, destinations: {} };
 let triggerToHandler = {};

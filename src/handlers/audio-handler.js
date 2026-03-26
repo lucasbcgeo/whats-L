@@ -1,6 +1,4 @@
-const { AUDIO_SOURCE_NUMBERS } = require("../config/env");
-
-const { data } = require("../config/commands");
+const { data } = require("../config");
 
 const KEYWORD_MAP = [];
 for (const [handler, config] of Object.entries(data.commands || {})) {
@@ -140,7 +138,7 @@ module.exports = {
         }
       } else {
         console.log("[AUDIO HANDLER] Transcricao nao reconhecida:", trimmed);
-        const allTriggers = require("../config/commands").getAllTriggers().join(", ");
+        const allTriggers = require("../config").getAllTriggers().join(", ");
         try { await msg.reply(`Não reconheci um comando no áudio. Comandos: ${allTriggers}`); } catch {}
       }
     } catch (e) {

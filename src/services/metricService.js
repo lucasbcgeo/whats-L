@@ -1,6 +1,6 @@
 const { upsertRootKey, time } = require("./obsidianService");
 const { parseDurationToISO } = require("../utils/duration");
-const { getKey, getTriggerMapping } = require("../config/commands");
+const { getKey, getTriggerMapping } = require("../config");
 
 const { toIsoMinuteZ, dateFromTsUTC, shiftDateStrUTC, getSonoDormiDate, getLocalCalendarDate, msToISODuration } = time;
 

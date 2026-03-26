@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { getFileWatcherConfig } = require("../config/commands");
+const { getFileWatcherConfig } = require("../config");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "header_watcher_state.json");
 

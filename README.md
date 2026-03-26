@@ -37,7 +37,7 @@ Monitors a Markdown file for changes. When `### Section` content changes, the up
 
 ## Architecture
 
-All bot behavior is configured in `data/commands.json`. The hierarchy:
+All bot behavior is configured in `data/config.json`. The hierarchy:
 
 ```
 profiles → features → commands → handlers
@@ -158,8 +158,8 @@ Define who can do what. Each profile has:
 ```bash
 npm install
 cp .env.example .env
-cp data/commands.json.example data/commands.json
-# Edit .env and commands.json with your values
+cp data/config.json.example data/config.json
+# Edit .env and config.json with your values
 ```
 
 ### Environment Variables

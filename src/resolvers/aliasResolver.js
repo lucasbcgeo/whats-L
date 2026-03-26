@@ -1,4 +1,4 @@
-const { resolveSource, resolveDestination } = require("../config/commands");
+const { resolveSource, resolveDestination } = require("../config");
 
 function resolveSourceAlias(input) {
     if (!input) return null;

@@ -1,7 +1,7 @@
 const Database = require("better-sqlite3");
 const path = require("path");
 const fs = require("fs-extra");
-const { resolveSource, data } = require("../config/commands");
+const { resolveSource, data } = require("../config");
 
 function getSources() {
     return Object.entries(data.sources || {}).map(([id, config]) => ({

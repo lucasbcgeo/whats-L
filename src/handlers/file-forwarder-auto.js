@@ -1,6 +1,6 @@
 const fs = require("fs-extra");
 const path = require("path");
-const { getForwarderSources } = require("../config/commands");
+const { getForwarderSources } = require("../config");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "forward_state.json");
 

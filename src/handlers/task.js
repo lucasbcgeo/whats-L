@@ -1,6 +1,6 @@
 const { appendTaskToSection } = require("../lib/obsidianClient");
 const { getLogicalDate } = require("../lib/obsidianClient").time;
-const { getHandlerForTrigger, getSection } = require("../config/commands");
+const { getHandlerForTrigger, getSection } = require("../config");
 
 module.exports = {
     match({ parsed }) {

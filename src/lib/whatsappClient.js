@@ -2,7 +2,7 @@ const path = require("path");
 const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const { GROUP_ID } = require("../config/env");
-const { data } = require("../config/commands");
+const { data } = require("../config");
 
 let reconnectAttempts = 0;
 const MAX_RECONNECT = 10;
