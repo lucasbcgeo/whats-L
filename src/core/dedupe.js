@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const FILE = path.join(__dirname, "..", "..", "..", "data", "processed.json");
+const FILE = path.join(__dirname, "..", "..", "data", "processed.json");
 
 function ensureDir() {
     fs.mkdirSync(path.dirname(FILE), { recursive: true });

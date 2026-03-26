@@ -67,14 +67,37 @@ function getWatcherConfig() {
     return getFileWatcherConfig();
 }
 
+function isClientReady(client) {
+    try {
+        return client && client.pupPage && !client.pupPage.isClosed();
+    } catch {
+        return false;
+    }
+}
+
 async function syncFranklinHeaders(client) {
+    if (!isClientReady(client)) {
+        console.warn("[HEADER WATCHER] Cliente não está pronto. Pulando sync.");
+        return;
+    }
+
     const config = getWatcherConfig();
     if (!config) {
         console.warn("⚠️ Perfil secretário_franklin não configurado. Pulando watcher.");
         return;
     }
 
-    const targetGroup = await resolveTargetGroup(client, config.groupName);
+    let targetGroup;
+    try {
+        targetGroup = await resolveTargetGroup(client, config.groupName);
+    } catch (e) {
+        if (e.message?.includes("detached Frame")) {
+            console.error("[HEADER WATCHER] Frame desconectado durante resolução do grupo. Aguardando reconexão...");
+            return;
+        }
+        throw e;
+    }
+
     if (!targetGroup) {
         console.error(`[HEADER WATCHER] Grupo "${config.groupName}" não encontrado.`);
         return;
@@ -98,6 +121,10 @@ async function syncFranklinHeaders(client) {
             state[title] = body;
             sentCount++;
         } catch (e) {
+            if (e.message?.includes("detached Frame")) {
+                console.error("[HEADER WATCHER] Frame desconectado. Interrompendo sync e aguardando reconexão...");
+                break;
+            }
             console.error(`[HEADER WATCHER] Erro ao enviar "${title}":`, e.message);
         }
     }
@@ -118,9 +145,18 @@ function startWatching(client) {
         return;
     }
 
-    syncFranklinHeaders(clientRef).catch(e => {
-        console.error("[HEADER WATCHER] Erro no sync inicial:", e.message);
-    });
+    const runInitialSync = () => {
+        if (!isClientReady(clientRef)) {
+            console.log("[HEADER WATCHER] Aguardando cliente ficar pronto...");
+            setTimeout(runInitialSync, 2000);
+            return;
+        }
+        syncFranklinHeaders(clientRef).catch(e => {
+            console.error("[HEADER WATCHER] Erro no sync inicial:", e.message);
+        });
+    };
+
+    runInitialSync();
 
     if (watcher) watcher.close();
 
@@ -129,6 +165,10 @@ function startWatching(client) {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
             try {
+                if (!isClientReady(clientRef)) {
+                    console.warn("[HEADER WATCHER] Cliente não está pronto. Ignorando mudança de arquivo.");
+                    return;
+                }
                 await syncFranklinHeaders(clientRef);
             } catch (e) {
                 console.error("[HEADER WATCHER] Erro durante sync:", e.message);

@@ -1,9 +1,19 @@
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+const fs = require('fs');
+const dotenvPath = require('path').join(__dirname, '..', '.env');
+
+if (fs.existsSync(dotenvPath)) {
+  const result = require('dotenv').config({ path: dotenvPath });
+  if (result.error) {
+    console.error('[DOTENV] Erro ao carregar .env:', result.error.message);
+  }
+} else {
+  console.error('[DOTENV] Arquivo .env não encontrado em:', dotenvPath);
+}
 
 const { patchConsole } = require("./utils/logger");
 patchConsole();
 
-const { client } = require("./lib/whatsappClient");
+const { client, setShuttingDown } = require("./lib/whatsappClient");
 const { checkpoint } = require("./services/dedupeService");
 const { syncMissedMessagesByCheckpoint } = require("./services/syncService");
 const { startWatching } = require("./services/headerWatcherService");
@@ -108,5 +118,20 @@ client.on("message_revoke_everyone", async (msg) => {
         console.log("[UNDO] Nenhum registro para reverter.");
     }
 });
+
+async function shutdown(signal) {
+    console.log(`\n🛑 ${signal} recebido. Desligando gracefully...`);
+    setShuttingDown(true);
+    try {
+        await client.destroy();
+        console.log("✅ Cliente WhatsApp destruído com sucesso. Sessão preservada.");
+    } catch (e) {
+        console.error("⚠️ Erro ao destruir cliente:", e.message);
+    }
+    process.exit(0);
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 client.initialize();

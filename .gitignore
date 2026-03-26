@@ -48,3 +48,9 @@ docs/
 
 # Worktrees
 .worktrees/
+
+# Python venv
+venv/
+
+# Tools (FFmpeg, etc)
+tools/

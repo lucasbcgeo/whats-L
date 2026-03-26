@@ -42,9 +42,11 @@ const os = require("os");
 const path = require("path");
 const { exec } = require("child_process");
 
+const FFMPEG = path.join(__dirname, "..", "..", "tools", "ffmpeg.exe");
+
 async function convertToWav(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
-    exec(`ffmpeg -i "${inputPath}" -ar 16000 -ac 1 -c:a pcm_s16le "${outputPath}"`, (err) => {
+    exec(`"${FFMPEG}" -i "${inputPath}" -ar 16000 -ac 1 -c:a pcm_s16le "${outputPath}"`, { windowsHide: true }, (err) => {
       if (err) reject(err);
       else resolve();
     });
@@ -112,11 +114,11 @@ module.exports = {
       }
 
       if (parsed) {
-        for (const h of require("./index.js")) {
+        for (const { name, handler: h } of require("./index.js")) {
           if (h !== module.exports && h.match({ msg, parsed, chat })) {
             try {
               const result = await h.handle({ msg, parsed, chat });
-              console.log("[AUDIO HANDLER] Handler executado:", h.constructor?.name || "handler");
+              console.log("[AUDIO HANDLER] Handler executado:", name);
 
               if (result && result.key) {
                 const metric = getHandlerMetricName(h);

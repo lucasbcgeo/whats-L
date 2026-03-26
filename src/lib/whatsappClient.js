@@ -6,6 +6,7 @@ const { data } = require("../config/commands");
 
 let reconnectAttempts = 0;
 const MAX_RECONNECT = 10;
+let shuttingDown = false;
 
 const client = new Client({
   authStrategy: new LocalAuth({ 
@@ -36,7 +37,7 @@ client.on("auth_failure", (msg) => {
 
 client.on("disconnected", (reason) => {
   console.log("[WHATSAPP] Desconectado:", reason);
-  scheduleReconnect();
+  if (!shuttingDown) scheduleReconnect();
 });
 
 client.on("remote_session_saved", () => {
@@ -106,4 +107,5 @@ module.exports = {
   client,
   getTargetGroup,
   getTargetChats,
+  setShuttingDown: (v) => { shuttingDown = v; },
 };

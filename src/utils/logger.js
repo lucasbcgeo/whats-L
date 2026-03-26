@@ -10,7 +10,17 @@ fs.mkdirSync(LOG_DIR, { recursive: true });
 
 function toFile(level, args) {
   const ts = new Date().toISOString();
-  const msg = args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+  const msg = args.map(a => {
+    if (typeof a === "string") return a;
+    const str = JSON.stringify(a);
+    // Ignora objetos vazios "{}" para não poluir logs
+    if (str === "{}") return null;
+    return str;
+  }).filter(Boolean).join(" ");
+  
+  // Não grava linha se a mensagem ficou vazia após filtro
+  if (!msg) return;
+  
   const line = `[${ts}] [${level}] ${msg}\n`;
   fs.appendFileSync(LOG_FILE, line);
 }

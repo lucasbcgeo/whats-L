@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
+// dotenv já é carregado em main.js antes deste módulo
 
 module.exports = {
   VAULT: process.env.OBSIDIAN_VAULT_PATH,
