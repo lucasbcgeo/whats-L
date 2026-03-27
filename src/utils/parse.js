@@ -4,7 +4,7 @@ function parseCommand(text) {
 
     const parts = raw.split(/\s+/);
     const cmdRaw = parts[0].slice(1).toLowerCase();
-    const cmd = cmdRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const cmd = cmdRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.,!?;:]+$/, "");
     const args = parts.slice(1);
     return { raw, cmd, cmdRaw, args };
 }

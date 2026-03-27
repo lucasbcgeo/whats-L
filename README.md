@@ -238,11 +238,7 @@ pm2 save
 pm2 logs whats-L
 ```
 
-### Tests
 
-```bash
-npm test
-```
 
 ---
 
