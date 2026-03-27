@@ -156,17 +156,38 @@ Define who can do what. Each profile has:
 
 ## Setup
 
+### Requirements
+- Node.js v18.0.0 or higher
+- Python 3.9+ (recommended to use virtualenv)
+- ffmpeg (required for audio processing)
+- whisper (if you want run full local)
+
+### Installation
+
+#### JavaScript dependencies
+
 ```bash
-npm install
-pip install openai-whisper
-# Install ffmpeg (required for audio processing)
-# On Ubuntu/Debian: sudo apt-get install ffmpeg
-# On macOS: brew install ffmpeg
-# On Windows: download from https://ffmpeg.org/download.html
-cp .env.example .env
-cp data/config.json.example data/config.json
-# Edit .env and config.json with your values
+npm install whatsapp-web.js
+# or
+yarn add whatsapp-web.js
+# or
+pnpm add whatsapp-web.js
 ```
+
+#### Python dependencies
+```bash
+pip install openai-whisper
+```
+
+#### ffmpeg installation
+```bash
+Ubuntu/Debian: sudo apt-get install ffmpeg
+```
+```bash
+macOS: brew install ffmpeg
+```
+
+Windows: download from ffmpeg.org/download.html
 
 ### Environment Variables
 
@@ -228,3 +249,11 @@ npm test
 ## License
 
 MIT
+
+## Acknowledgements
+
+This project makes use of the following open-source libraries:
+
+- [whatsapp-web.js](https://github.com/wwebjs/whatsapp-web.js) — A powerful Node.js library for interacting with the WhatsApp Web API.
+- [OpenAI Whisper](https://github.com/openai/whisper) — An automatic speech recognition (ASR) system for audio transcription.
+
