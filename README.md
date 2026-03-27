@@ -158,6 +158,11 @@ Define who can do what. Each profile has:
 
 ```bash
 npm install
+pip install openai-whisper
+# Install ffmpeg (required for audio processing)
+# On Ubuntu/Debian: sudo apt-get install ffmpeg
+# On macOS: brew install ffmpeg
+# On Windows: download from https://ffmpeg.org/download.html
 cp .env.example .env
 cp data/config.json.example data/config.json
 # Edit .env and config.json with your values
@@ -200,6 +205,12 @@ Or with PowerShell scripts:
 
 ### PM2 (production)
 
+First, install PM2 globally:
+```bash
+npm install -g pm2
+```
+
+Then start the application:
 ```bash
 pm2 start src/main.js --name whats-L
 pm2 save
