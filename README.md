@@ -179,7 +179,7 @@ DEDUPE_TTL=259200
 
 # Audio transcription (Whisper)
 WHISPER_MODEL_PATH=medium
-AUDIO_SOURCE_NUMBERS=number1@c.us,number2@c.us
+
 ```
 
 ---
