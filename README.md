@@ -6,6 +6,15 @@ WhatsApp bot for personal productivity — life metrics logging, file forwarding
 
 ## Features
 
+### File Forwarder
+
+- **Auto Forward**: Automatically forwards media from whitelisted phone numbers to a target group. Configurable per-number label and frequency (e.g., every 30 or 90 days).
+- **Manual Forward**: Forward files from vault sources or WhatsApp contacts to any destination via `#encaminhar arquivo para: destino de: fonte`. If no destination is specified, files are sent to the current chat.
+
+### Header Watcher
+
+Monitors a Markdown file for changes. When `### Section` content changes, the updated text is sent to a configured WhatsApp group. Runs independently as a background service — no manual trigger needed.
+
 ### Life Metrics
 Automatic logging to Obsidian notes via WhatsApp commands.
 
@@ -24,14 +33,6 @@ Automatic logging to Obsidian notes via WhatsApp commands.
 
 **Override**: add `correção` or `force` to any command to overwrite an existing value. Or simply delete the WhatsApp message.
 
-### File Forwarder
-
-- **Auto Forward**: Automatically forwards media from whitelisted phone numbers to a target group. Configurable per-number label and frequency (e.g., every 30 or 90 days).
-- **Manual Forward**: Forward files from vault sources or WhatsApp contacts to any destination via `#encaminhar arquivo para: destino de: fonte`. If no destination is specified, files are sent to the current chat.
-
-### Header Watcher
-
-Monitors a Markdown file for changes. When `### Section` content changes, the updated text is sent to a configured WhatsApp group. Runs independently as a background service — no manual trigger needed.
 
 ---
 
