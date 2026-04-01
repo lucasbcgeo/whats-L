@@ -1,4 +1,5 @@
-const { data } = require("../config");
+const { data, getAllTriggers } = require("../config");
+const { parseDateWord } = require("../utils/dateParser");
 
 const KEYWORD_MAP = [];
 for (const [handler, config] of Object.entries(data.commands || {})) {
@@ -30,11 +31,46 @@ function fuzzyParseCommand(text) {
   }
   return null;
 }
+
+function extractDateFromArgs(args, timestamp) {
+  const dateWords = ["hoje", "ontem", "anteontem", "amanha", "amanhã"];
+  const remaining = [];
+  let dateFlag = null;
+
+  // Tenta detectar data em palavras avulsas
+  for (let i = 0; i < args.length; i++) {
+    const norm = args[i].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (dateWords.includes(norm)) {
+      const parsed = parseDateWord(args[i], timestamp);
+      if (parsed) {
+        dateFlag = `--data:${parsed}`;
+        continue;
+      }
+    }
+    // Tenta "DD de mes" ou "DD de mes de AAAA" como sequência de args
+    if (/^\d{1,2}$/.test(args[i]) && i + 2 < args.length && args[i + 1]?.toLowerCase() === "de") {
+      const monthPart = args.slice(i + 2).join(" ").replace(/\s+de\s+\d{4}$/, (m) => m);
+      const candidate = `${args[i]} de ${monthPart}`;
+      const parsed = parseDateWord(candidate, timestamp);
+      if (parsed) {
+        dateFlag = `--data:${parsed}`;
+        // Pula os args consumidos
+        let skip = 2; // DD + "de"
+        while (i + skip < args.length && args[i + skip] !== args[i + skip + 1]) skip++;
+        i += skip;
+        continue;
+      }
+    }
+    remaining.push(args[i]);
+  }
+
+  if (dateFlag) remaining.push(dateFlag);
+  return { args: remaining, dateFlag };
+}
 const { transcribeAudio } = require("../services/transcriptionService");
 const { parseCommand } = require("../utils/parse");
 const { time } = require("../services/obsidianService");
 const { getHandlerMetricName, saveUndoContext } = require("../services/undoService");
-const { getLogicalDate } = time;
 const fs = require("fs-extra");
 const os = require("os");
 const path = require("path");
@@ -64,8 +100,7 @@ module.exports = {
     return msg.hasMedia && (msg.type === "audio" || msg.type === "ptt");
   },
 
-  async handle({ msg, chat }) {
-    const client = msg.client;
+  async handle({ msg, chat, profile }) {
     console.log(`\n[AUDIO HANDLER] Processando audio do grupo: ${chat.name}`);
 
     const tempDir = os.tmpdir();
@@ -111,8 +146,20 @@ module.exports = {
         if (parsed) console.log("[AUDIO HANDLER] Fuzzy match:", parsed.raw);
       }
 
+      // Extrai datas dos args ("hoje", "ontem", "28 de agosto")
+      if (parsed && parsed.args.length > 0) {
+        const extracted = extractDateFromArgs(parsed.args, msg.timestamp);
+        if (extracted.dateFlag) {
+          parsed.args = extracted.args;
+          console.log("[AUDIO HANDLER] Data extraída:", extracted.dateFlag);
+        }
+      }
+
       if (parsed) {
-        for (const { name, handler: h } of require("./index.js")) {
+        const { getProfileHandlers } = require("../main");
+        const profileHandlers = getProfileHandlers(profile);
+        
+        for (const { name, handler: h } of profileHandlers) {
           if (h !== module.exports && h.match({ msg, parsed, chat })) {
             try {
               const result = await h.handle({ msg, parsed, chat });
@@ -138,7 +185,7 @@ module.exports = {
         }
       } else {
         console.log("[AUDIO HANDLER] Transcricao nao reconhecida:", trimmed);
-        const allTriggers = require("../config").getAllTriggers().join(", ");
+        const allTriggers = getAllTriggers().join(", ");
         try { await msg.reply(`Não reconheci um comando no áudio. Comandos: ${allTriggers}`); } catch {}
       }
     } catch (e) {

@@ -1,5 +1,6 @@
 const { metricService } = require("../services/metricService");
-const { hasForceFlag } = require("../utils/parse");
+const { hasForceFlag, parseFlags } = require("../utils/parse");
+const { resolveDateFlag } = require("../utils/dateParser");
 const { getHandlerForTrigger } = require("../config");
 
 module.exports = {
@@ -9,6 +10,8 @@ module.exports = {
     },
     async handle({ msg, parsed }) {
         const force = hasForceFlag(parsed.args);
-        return await metricService.saveMetric({ metric: "screenTime", timestamp: msg.timestamp, rawArgs: parsed, options: { force } });
+        const { flags } = parseFlags(parsed.args);
+        const dateOverride = flags.data ? resolveDateFlag(flags.data, msg.timestamp) : null;
+        return await metricService.saveMetric({ metric: "screenTime", timestamp: msg.timestamp, rawArgs: parsed, options: { force, dateOverride } });
     },
 };

@@ -6,6 +6,7 @@ const { getHandlerForTrigger, isDestinationAllowed } = require("../config");
 const { resolveSourceAlias, resolveDestinationAlias } = require("../resolvers/aliasResolver");
 const vaultResolver = require("../resolvers/vaultResolver");
 const contactResolver = require("../resolvers/contactResolver");
+const { client } = require("../lib/whatsappClient");
 
 const pendingSelections = new Map();
 const SELECTION_TTL = 5 * 60 * 1000;
@@ -261,7 +262,6 @@ module.exports = {
     },
 
     async handle({ msg, parsed, chat, profile }) {
-        const client = msg.client || require("../lib/whatsappClient").client;
         const body = (msg.body || parsed?.raw || "").trim();
 
         console.log("[ENCAMINHAR] handle() chamado. body:", body, "| via audio:", !!parsed?._fuzzy);

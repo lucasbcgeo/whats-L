@@ -1,10 +1,14 @@
 const fs = require("fs-extra");
 const path = require("path");
-const { getForwarderSources } = require("../config");
+const { getForwarderSources, reload } = require("../config");
+const { client } = require("../lib/whatsappClient");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "forward_state.json");
 
-const SOURCE_CONFIG = getForwarderSources();
+function getSourceConfig() {
+    reload();
+    return getForwarderSources();
+}
 
 function loadState() {
     try {
@@ -38,6 +42,7 @@ async function getTargetGroup(client, targetGroupName) {
 }
 
 function getSourceInfo(from) {
+    const SOURCE_CONFIG = getSourceConfig();
     console.log(`[DEBUG FILE FORWARDER] getSourceInfo checking from: ${from}`);
     console.log(`[DEBUG FILE FORWARDER] SOURCE_CONFIG keys: ${Object.keys(SOURCE_CONFIG).join(', ')}`);
     if (SOURCE_CONFIG[from]) return SOURCE_CONFIG[from];
@@ -78,6 +83,7 @@ module.exports = {
             return false;
         }
 
+        const SOURCE_CONFIG = getSourceConfig();
         const state = loadState();
         const matchedKey = Object.keys(SOURCE_CONFIG).find(key => 
             from.includes(key.split('@')[0]) || key.split('@')[0].includes(from.split('@')[0])
@@ -94,11 +100,11 @@ module.exports = {
     async handle({ msg }) {
         const from = msg.from;
         const config = getSourceInfo(from);
-        const client = msg.client;
         const dateStr = new Date(msg.timestamp * 1000).toLocaleString();
 
         console.log(`\n[FILE FORWARDER] ${config.label} | ${from} | ${dateStr}`);
 
+        const SOURCE_CONFIG = getSourceConfig();
         const matchedKey = Object.keys(SOURCE_CONFIG).find(key => 
             from.includes(key.split('@')[0]) || key.split('@')[0].includes(from.split('@')[0])
         );
@@ -136,6 +142,7 @@ module.exports = {
     },
 
     checkAllSources() {
+        const SOURCE_CONFIG = getSourceConfig();
         const state = loadState();
         for (const [num, config] of Object.entries(SOURCE_CONFIG)) {
             checkOverdue(num, config, state);

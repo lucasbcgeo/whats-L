@@ -2,19 +2,72 @@ const { getTargetChats } = require("../lib/whatsappClient");
 const { checkpoint } = require("./dedupeService");
 const { BACKFILL_LIMIT } = require("../config/env");
 const { data } = require("../config");
+const { client } = require("../lib/whatsappClient");
 
 function getForwardSourceNumbers() {
+    const contacts = data.labels?.contacts || {};
     const numbers = [];
+    
     for (const profile of Object.values(data.profiles || {})) {
-        if (profile.match?.numbers) {
-            numbers.push(...profile.match.numbers);
+        const matchContacts = profile.match?.contacts || [];
+        
+        for (const contactKey of matchContacts) {
+            const contactConfig = contacts[contactKey];
+            if (!contactConfig) continue;
+            
+            if (contactConfig.numbers) {
+                numbers.push(...contactConfig.numbers);
+            }
+            
+            if (contactConfig.sublabels) {
+                for (const subConfig of Object.values(contactConfig.sublabels)) {
+                    if (subConfig.numbers) {
+                        numbers.push(...subConfig.numbers);
+                    }
+                }
+            }
         }
     }
+    
     return [...new Set(numbers)];
 }
 
+function getProfileGroupNames() {
+    const groups = data.labels?.groups || {};
+    const groupNames = [];
+    
+    for (const profile of Object.values(data.profiles || {})) {
+        const matchGroups = profile.match?.groups || [];
+        
+        for (const groupKey of matchGroups) {
+            const groupConfig = groups[groupKey];
+            if (groupConfig?.groupNames) {
+                groupNames.push(...groupConfig.groupNames);
+            }
+        }
+    }
+    
+    return [...new Set(groupNames)];
+}
+
 async function syncMissedMessagesByCheckpoint(processMessageFn) {
-  const targetChats = await getTargetChats(getForwardSourceNumbers());
+  const forwardNumbers = getForwardSourceNumbers();
+  const profileGroupNames = getProfileGroupNames();
+  console.log(`[SYNC] Números para sync: ${forwardNumbers.join(', ')}`);
+  console.log(`[SYNC] Grupos dos profiles: ${profileGroupNames.join(', ')}`);
+  
+  const targetChats = await getTargetChats(forwardNumbers);
+  
+  const chats = await client.getChats();
+  for (const groupName of profileGroupNames) {
+    const group = chats.find(c => c.isGroup && c.name === groupName);
+    if (group && !targetChats.find(c => c.id._serialized === group.id._serialized)) {
+      targetChats.push(group);
+      console.log(`[SYNC] Adicionado grupo: ${groupName}`);
+    }
+  }
+  
+  console.log(`[SYNC] Chats totales: ${targetChats.map(c => c.name || c.id._serialized).join(', ')}`);
 
   if (targetChats.length === 0) {
     console.log("⚠️ Nenhum chat alvo encontrado para sync.");

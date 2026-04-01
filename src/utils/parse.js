@@ -14,4 +14,20 @@ function hasForceFlag(args) {
     return args.some(a => ["correção", "correcao", "force"].includes(a.toLowerCase()));
 }
 
-module.exports = { parseCommand, hasForceFlag };
+function parseFlags(args) {
+    const flags = {};
+    const remaining = [];
+    for (const a of args) {
+        const m = a.match(/^--([^:]+):(.+)$/);
+        if (m) {
+            flags[m[1].toLowerCase()] = m[2];
+        } else if (a.startsWith("--")) {
+            flags[a.slice(2).toLowerCase()] = true;
+        } else {
+            remaining.push(a);
+        }
+    }
+    return { flags, remaining };
+}
+
+module.exports = { parseCommand, hasForceFlag, parseFlags };

@@ -56,6 +56,46 @@ function getUndoContext(msgId) {
     return db[msgId] || null;
 }
 
+function getLastUndoContext() {
+    const db = load();
+    const entries = Object.entries(db);
+    if (entries.length === 0) return null;
+    const [msgId, ctx] = entries[entries.length - 1];
+    return { msgId, ...ctx };
+}
+
+function getEntriesByMetric(metric) {
+    const db = load();
+    return Object.entries(db)
+        .filter(([_, ctx]) => ctx.metric === metric)
+        .map(([msgId, ctx]) => ({ msgId, ...ctx }));
+}
+
+function getLastEntryByMetric(metric) {
+    const entries = getEntriesByMetric(metric);
+    return entries.length > 0 ? entries[entries.length - 1] : null;
+}
+
+function getEntryByDateAndMetric(metric, dateStr) {
+    const db = load();
+    for (const [msgId, ctx] of Object.entries(db)) {
+        if (ctx.metric === metric) {
+            const ctxDate = time.getLogicalDate(ctx.timestamp, -3);
+            if (ctxDate === dateStr) return { msgId, ...ctx };
+        }
+    }
+    return null;
+}
+
+function getAvailableMetrics() {
+    const db = load();
+    const metrics = new Set();
+    for (const ctx of Object.values(db)) {
+        if (ctx.metric) metrics.add(ctx.metric);
+    }
+    return [...metrics];
+}
+
 async function undoScalar(dateStr, key) {
     await upsertRootKey({
         dateStr, key,
@@ -135,4 +175,4 @@ async function undoMetric(msgId) {
     }
 }
 
-module.exports = { getHandlerMetricName, saveUndoContext, undoMetric };
+module.exports = { getHandlerMetricName, saveUndoContext, undoMetric, getLastUndoContext, getLastEntryByMetric, getEntryByDateAndMetric, getAvailableMetrics };

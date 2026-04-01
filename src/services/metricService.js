@@ -73,7 +73,7 @@ const METRIC_TYPES = {
 
 async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options = {} }) {
     const ts = timestamp;
-    const ds = dateStr || getLogicalDate(ts);
+    const ds = dateStr || options.dateOverride || getLogicalDate(ts);
     const type = METRIC_TYPES[metric];
 
     if (!type) {
@@ -154,7 +154,7 @@ async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options 
         case "sleep_dormi": {
             const sleepKey = getKey("sleep") || "sono";
             const dormiuISO = toIsoMinuteZ(ts);
-            const dateStrDormiu = options.dateStr || getSonoDormiDate(ts);
+            const dateStrDormiu = options.dateOverride || getSonoDormiDate(ts);
             const prevDate = shiftDateStrUTC(dateStrDormiu, -1);
             const r = await upsertRootKey({
                 dateStr: dateStrDormiu, key: sleepKey,

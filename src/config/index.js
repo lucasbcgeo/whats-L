@@ -13,8 +13,13 @@ function normalize(str) {
 }
 
 function load() {
-    const raw = fs.readFileSync(COMMANDS_FILE, "utf8");
-    data = JSON.parse(raw);
+    try {
+        const raw = fs.readFileSync(COMMANDS_FILE, "utf8");
+        data = JSON.parse(raw);
+    } catch (e) {
+        console.error("[CONFIG] Erro ao carregar config.json:", e.message);
+        data = { commands: {}, sources: {}, destinations: {} };
+    }
 
     triggerToHandler = {};
     triggerToKey = {};
@@ -50,6 +55,10 @@ function load() {
 }
 
 load();
+
+function reload() {
+    load();
+}
 
 function resolveSource(input) {
     if (!input) return null;
@@ -139,16 +148,69 @@ function getTriggerMapping(handlerName) {
 }
 
 function resolveProfile({ groupName, number }) {
+    const contacts = data.labels?.contacts || {};
+    const groups = data.labels?.groups || {};
+    
     for (const [profileName, profile] of Object.entries(data.profiles || {})) {
         const match = profile.match || {};
-        if (match.groupName && groupName && match.groupName === groupName) {
-            return profileName;
+        
+        let groupMatch = false;
+        let numberMatch = false;
+        
+        if (match.groups && groupName) {
+            for (const groupKey of match.groups) {
+                const groupConfig = groups[groupKey];
+                if (groupConfig?.groupNames && groupConfig.groupNames.includes(groupName)) {
+                    groupMatch = true;
+                    break;
+                }
+            }
         }
+        
+        if (match.groupName && groupName && match.groupName === groupName) {
+            groupMatch = true;
+        }
+        
+        if (match.contacts && number) {
+            for (const contactKey of match.contacts) {
+                const contactConfig = contacts[contactKey];
+                
+                // Check main numbers
+                if (contactConfig?.numbers && contactConfig.numbers.includes(number)) {
+                    numberMatch = true;
+                    break;
+                }
+                
+                // Check sublabels
+                if (contactConfig?.sublabels) {
+                    for (const sublabelConfig of Object.values(contactConfig.sublabels)) {
+                        if (sublabelConfig?.numbers && sublabelConfig.numbers.includes(number)) {
+                            numberMatch = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (numberMatch) break;
+            }
+        }
+        
         if (match.numbers && number && match.numbers.includes(number)) {
-            return profileName;
+            numberMatch = true;
         }
         if (match.number && number && match.number === number) {
-            return profileName;
+            numberMatch = true;
+        }
+        
+        const hasGroupMatch = match.groupName || match.groups;
+        const hasNumberMatch = match.numbers || match.number || match.contacts;
+        
+        if (hasGroupMatch && hasNumberMatch) {
+            if (groupMatch || numberMatch) return profileName;
+        } else if (hasGroupMatch) {
+            if (groupMatch) return profileName;
+        } else if (hasNumberMatch) {
+            if (numberMatch) return profileName;
         }
     }
     return null;
@@ -185,9 +247,19 @@ function isHandlerAllowed(profileName, handlerName) {
 function isGroupAllowed(profileName, groupName) {
     const profile = data.profiles?.[profileName];
     if (!profile) return true;
-    const groups = profile.match?.groups;
-    if (!groups) return true;
-    return groups.includes(groupName);
+    const groups = data.labels?.groups || {};
+    
+    const matchGroups = profile.match?.groups || [];
+    if (matchGroups.length === 0) return true;
+    
+    for (const groupKey of matchGroups) {
+        const groupConfig = groups[groupKey];
+        if (groupConfig?.groupNames && groupConfig.groupNames.includes(groupName)) {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 function isDestinationAllowed(profileName, targetChat, senderId) {
@@ -219,13 +291,58 @@ function isSourceAllowed(profileName, sourceKey) {
 
 function getForwarderSources() {
     const sources = {};
-    for (const profile of Object.values(data.profiles || {})) {
-        if (!profile.forwardMeta || !profile.match?.numbers) continue;
-        const { label, frequencyDays, destination } = profile.forwardMeta;
-        const destConfig = destination ? data.destinations?.[destination] : null;
-        const targetGroupName = destConfig?.groupName || null;
-        for (const num of profile.match.numbers) {
-            sources[num] = { label, frequencyDays, targetGroupName };
+    const contacts = data.labels?.contacts || {};
+    
+    for (const [contactKey, contactConfig] of Object.entries(contacts)) {
+        // Check main numbers
+        if (contactConfig?.numbers && contactConfig?.label) {
+            for (const profile of Object.values(data.profiles || {})) {
+                const matchContacts = profile.match?.contacts || [];
+                if (!matchContacts.includes(contactKey)) continue;
+                
+                const allowedDests = profile.allowedDestinations || [];
+                for (const destKey of allowedDests) {
+                    const destConfig = data.destinations?.[destKey];
+                    if (!destConfig?.groupName) continue;
+                    
+                    for (const num of contactConfig.numbers) {
+                        sources[num] = {
+                            contactKey,
+                            label: contactConfig.label,
+                            frequencyDays: contactConfig.frequencyDays || null,
+                            targetGroupName: destConfig.groupName
+                        };
+                    }
+                }
+            }
+        }
+        
+        // Check sublabels
+        if (contactConfig?.sublabels) {
+            for (const [sublabelKey, sublabelConfig] of Object.entries(contactConfig.sublabels)) {
+                if (!sublabelConfig?.numbers || !sublabelConfig?.label) continue;
+                const frequencyDays = contactConfig.frequencyDays || 30;
+                
+                for (const profile of Object.values(data.profiles || {})) {
+                    const matchContacts = profile.match?.contacts || [];
+                    if (!matchContacts.includes(contactKey)) continue;
+                    
+                    const allowedDests = profile.allowedDestinations || [];
+                    for (const destKey of allowedDests) {
+                        const destConfig = data.destinations?.[destKey];
+                        if (!destConfig?.groupName) continue;
+                        
+                        for (const num of sublabelConfig.numbers) {
+                            sources[num] = {
+                                contactKey: `${contactKey}.${sublabelKey}`,
+                                label: sublabelConfig.label,
+                                frequencyDays,
+                                targetGroupName: destConfig.groupName
+                            };
+                        }
+                    }
+                }
+            }
         }
     }
     return sources;
@@ -233,16 +350,21 @@ function getForwarderSources() {
 
 function getFileWatcherConfig() {
     for (const profile of Object.values(data.profiles || {})) {
-        if (!profile.forwardMeta?.destination || !profile.match?.file) continue;
-        const destConfig = data.destinations?.[profile.forwardMeta.destination];
-        if (!destConfig?.groupName) continue;
-        return { file: profile.match.file, groupName: destConfig.groupName };
+        if (!profile.match?.file) continue;
+        const allowedDests = profile.allowedDestinations || [];
+        for (const destKey of allowedDests) {
+            const destConfig = data.destinations?.[destKey];
+            if (destConfig?.groupName) {
+                return { file: profile.match.file, groupName: destConfig.groupName };
+            }
+        }
     }
     return null;
 }
 
 module.exports = {
     data,
+    reload,
     resolveSource,
     resolveDestination,
     getHandlerForTrigger,

@@ -1,6 +1,8 @@
 const { appendTaskToSection } = require("../lib/obsidianClient");
 const { getLogicalDate } = require("../lib/obsidianClient").time;
 const { getHandlerForTrigger, getSection } = require("../config");
+const { parseFlags } = require("../utils/parse");
+const { resolveDateFlag } = require("../utils/dateParser");
 
 module.exports = {
     match({ parsed }) {
@@ -8,13 +10,15 @@ module.exports = {
         return getHandlerForTrigger(parsed.cmd) === "task";
     },
     async handle({ msg, parsed }) {
-        const taskText = parsed.args.join(" ").trim();
+        const { flags, remaining } = parseFlags(parsed.args);
+        const taskText = remaining.join(" ").trim();
         if (!taskText) {
             console.log("[TASK] Texto vazio, ignorando.");
             return;
         }
 
-        const dateStr = getLogicalDate(msg.timestamp);
+        const dateOverride = flags.data ? resolveDateFlag(flags.data, msg.timestamp) : null;
+        const dateStr = dateOverride || getLogicalDate(msg.timestamp);
         const section = getSection("task");
         const result = await appendTaskToSection({ dateStr, taskText, section });
 

@@ -20,9 +20,93 @@ const { startWatching } = require("./services/headerWatcherService");
 const { parseCommand } = require("./utils/parse");
 const { isProcessed, markProcessed } = require("./core/dedupe");
 const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
-const handlers = require("./handlers");
-const fileForwarderAuto = require("./handlers/file-forwarder-auto");
-const { resolveProfile, isHandlerAllowed, isGroupAllowed } = require("./config");
+const { resolveProfile, isGroupAllowed, data } = require("./config");
+
+const servicesCache = {};
+const handlersCache = {};
+
+function loadService(serviceName) {
+    if (servicesCache[serviceName]) return servicesCache[serviceName];
+    
+    try {
+        const servicePath = `./services/${serviceName}`;
+        const Service = require(servicePath);
+        servicesCache[serviceName] = Service;
+        console.log(`[SERVICE LOADED] ${serviceName}`);
+        return Service;
+    } catch (e) {
+        console.error(`[SERVICE ERROR] ${serviceName}:`, e.message);
+        return null;
+    }
+}
+
+const path = require("path");
+
+function loadHandler(handlerName) {
+    if (handlersCache[handlerName]) return handlersCache[handlerName];
+    
+    const handlersDir = path.join(__dirname, "handlers");
+    const files = fs.readdirSync(handlersDir);
+    
+    // Procura arquivo que corresponde ao handler (sem extensão .js)
+    const targetFile = files.find(f => {
+        const name = f.replace(".js", "");
+        // Compara ignoring case e alguns padrões comuns
+        const lowerHandler = handlerName.toLowerCase();
+        const lowerFile = name.toLowerCase();
+        return lowerFile.includes(lowerHandler) || 
+               lowerHandler.replace(/whats/g, "whats").replace(/to/g, "to") === lowerFile.replace(/-/g, "").replace(/_/g, "") ||
+               name === handlerName;
+    });
+    
+    if (targetFile) {
+        try {
+            const handler = require(`./handlers/${targetFile}`);
+            handlersCache[handlerName] = handler;
+            console.log(`[HANDLER LOADED] ${handlerName} -> ${targetFile}`);
+            return handler;
+        } catch (e) {
+            console.error(`[HANDLER ERROR] ${handlerName}: erro ao carregar ${targetFile}:`, e.message);
+        }
+    }
+    
+    console.error(`[HANDLER ERROR] ${handlerName}: não encontrado`);
+    return null;
+}
+
+function getProfileHandlers(profileName) {
+    const profile = data.profiles?.[profileName];
+    if (!profile) return [];
+    
+    const handlers = [];
+    const features = profile.features || [];
+    
+    for (const featureName of features) {
+        const feature = data.features?.[featureName];
+        if (!feature) continue;
+        
+        if (feature.commands) {
+            for (const cmd of feature.commands) {
+                const cmdConfig = data.commands?.[cmd];
+                if (cmdConfig?.handler) {
+                    const handler = loadHandler(cmdConfig.handler);
+                    if (handler) {
+                        handlers.push({ name: cmd, handler });
+                    }
+                }
+            }
+        }
+        
+        if (feature.service) {
+            const Service = loadService(feature.service);
+            if (Service) {
+                console.log(`[FEATURE SERVICE] ${featureName} -> ${feature.service}`);
+            }
+        }
+    }
+    
+    return handlers;
+}
 
 async function processMessage(msg, { silent } = { silent: false }) {
     try {
@@ -43,6 +127,12 @@ async function processMessage(msg, { silent } = { silent: false }) {
 
         if (chat.isGroup && profile && !isGroupAllowed(profile, chat.name)) return false;
 
+        const profileHandlers = getProfileHandlers(profile);
+        
+        if (!silent && profileHandlers.length > 0) {
+            console.log(`[PROFILE HANDLERS] ${profile}: ${profileHandlers.map(h => h.name).join(', ')}`);
+        }
+
         const parsed = parseCommand(msg.body);
 
         if (!silent) {
@@ -58,14 +148,10 @@ async function processMessage(msg, { silent } = { silent: false }) {
             if (parsed) console.log("[PARSED]", parsed);
         }
 
-        for (const { name, handler: h } of handlers) {
-            const allowed = isHandlerAllowed(profile, name);
-            if (!allowed) {
-                if (!silent) console.log("[HANDLER SKIP]", name, "- not allowed for profile", profile);
-                continue;
-            }
-            console.log("[DEBUG] checking handler:", name, "allowed:", allowed);
-            if (h.match({ msg, parsed, chat })) {
+        for (const { name, handler: h } of profileHandlers) {
+            const matchResult = h.match({ msg, parsed, chat, profile });
+            console.log("[DEBUG] checking handler:", name, "- match:", matchResult);
+            if (matchResult) {
                 if (!silent) console.log("[HANDLER EXEC]", name);
                 const result = await h.handle({ msg, parsed, chat, profile });
 
@@ -99,12 +185,13 @@ async function processMessage(msg, { silent } = { silent: false }) {
 
 client.on("ready", async () => {
     console.log("✅ Conectado.");
-    fileForwarderAuto.checkAllSources();
     await syncMissedMessagesByCheckpoint(processMessage);
     startWatching(client);
 });
 
 client.on("message_create", processMessage);
+
+module.exports = { getProfileHandlers, processMessage };
 
 client.on("message_revoke_everyone", async (msg) => {
     const msgId = msg?.id?._serialized;
