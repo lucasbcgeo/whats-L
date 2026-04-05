@@ -7,4 +7,6 @@ module.exports = {
   DAILY_LOG_CUTOFF: Number(process.env.DAILY_LOG_CUTOFF ?? 5),
   BACKFILL_LIMIT: Number(process.env.BACKFILL_LIMIT ?? 500),
   WHISPER_MODEL_PATH: process.env.WHISPER_MODEL_PATH || "models/ggml-base.bin",
+  OLLAMA_API_KEY: process.env.OLLAMA_API_KEY,
+  OLLAMA_MODEL: process.env.OLLAMA_MODEL || "gpt-oss:120b",
 };
