@@ -28,7 +28,7 @@ function parseDateWord(text, timestamp) {
     if (!text) return null;
     const norm = normalize(text.trim());
 
-    const aliases = data.dateAliases || {};
+    const aliases = data.flags?.data?.values || data.dateAliases || {};
 
     // Verifica aliases do config
     for (const [word, type] of Object.entries(aliases)) {

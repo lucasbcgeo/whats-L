@@ -22,6 +22,38 @@ const { isProcessed, markProcessed } = require("./core/dedupe");
 const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
 const { resolveProfile, isGroupAllowed, data } = require("./config");
 
+const groupIgnoreList = [
+    "Boa Viagem",
+    "Monitoramento_quadra"
+];
+
+function loadIgnoreList() {
+    const labels = data.labels?.groups || {};
+    for (const [key, config] of Object.entries(labels)) {
+        if (config.label && config.silence === "true") {
+            if (!groupIgnoreList.includes(config.label)) {
+                groupIgnoreList.push(config.label);
+            }
+        }
+    }
+    console.log("[GROUP IGNORE LIST]", groupIgnoreList);
+}
+
+function shouldIgnoreGroup(groupName) {
+    for (const label of groupIgnoreList) {
+        for (const configLabel of Object.values(data.labels?.groups || {})) {
+            if (configLabel.label === label) {
+                for (const name of configLabel.groupNames || []) {
+                    if (groupName.includes(name) || name.includes(groupName)) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
 const servicesCache = {};
 const handlersCache = {};
 
@@ -185,11 +217,24 @@ async function processMessage(msg, { silent } = { silent: false }) {
 
 client.on("ready", async () => {
     console.log("✅ Conectado.");
+    loadIgnoreList();
     await syncMissedMessagesByCheckpoint(processMessage);
     startWatching(client);
 });
 
-client.on("message_create", processMessage);
+client.on("message_create", async (msg) => {
+    try {
+        const chat = await msg.getChat();
+        
+        if (chat.isGroup && shouldIgnoreGroup(chat.name)) {
+            return;
+        }
+        
+        await processMessage(msg);
+    } catch (e) {
+        console.error("[MESSAGE CREATE ERROR]", e.message);
+    }
+});
 
 module.exports = { getProfileHandlers, processMessage };
 

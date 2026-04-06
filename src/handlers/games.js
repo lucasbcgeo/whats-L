@@ -12,6 +12,7 @@ module.exports = {
         const force = hasForceFlag(parsed.args);
         const { flags, remaining } = parseFlags(parsed.args);
         const dateOverride = flags.data ? resolveDateFlag(flags.data, msg.timestamp) : null;
+        const dateRefColumn = flags.dataref === "sim";
         const argsClean = remaining.filter(a => {
             const norm = a.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             return !["correcao", "correção", "force"].includes(norm) && norm !== "force";

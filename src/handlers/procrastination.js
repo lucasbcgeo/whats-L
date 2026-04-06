@@ -12,6 +12,7 @@ module.exports = {
         const force = hasForceFlag(parsed.args);
         const { flags, remaining } = parseFlags(parsed.args);
         const dateOverride = flags.data ? resolveDateFlag(flags.data, msg.timestamp) : null;
+        const dateRefColumn = flags.dataref === "sim";
         let value = null;
         for (const arg of remaining) {
             const n = parseFloat(arg.replace(",", "."));
@@ -21,6 +22,6 @@ module.exports = {
             console.log("[PROCRASTINATION] Valor invalido (0-10). Recebido:", parsed.args);
             return;
         }
-        return await metricService.saveMetric({ metric: "procrastination", value, timestamp: msg.timestamp, rawArgs: parsed, options: { force, dateOverride } });
+        return await metricService.saveMetric({ metric: "procrastination", value, timestamp: msg.timestamp, rawArgs: parsed, options: { force, dateOverride, dateRefColumn } });
     },
 };

@@ -12,7 +12,8 @@ module.exports = {
         const force = hasForceFlag(parsed.args);
         const { flags } = parseFlags(parsed.args);
         const dateOverride = flags.data ? resolveDateFlag(flags.data, msg.timestamp) : null;
+        const dateRefColumn = flags.dataref === "sim";
         const metric = parsed.cmd === "dormi" ? "sleep_bed" : "sleep_wake";
-        return await metricService.saveMetric({ metric, timestamp: msg.timestamp, rawArgs: parsed, options: { force, dateOverride } });
+        return await metricService.saveMetric({ metric, timestamp: msg.timestamp, rawArgs: parsed, options: { force, dateOverride, dateRefColumn } });
     },
 };

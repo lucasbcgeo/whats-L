@@ -73,6 +73,8 @@ const METRIC_TYPES = {
 
 async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options = {} }) {
     const ts = timestamp;
+    const useDateRef = options.dateRefColumn === true || options.dateRefColumn === "sim";
+    const dateColumn = useDateRef ? "data_ref" : "data";
     const ds = dateStr || options.dateOverride || getLogicalDate(ts);
     const type = METRIC_TYPES[metric];
 

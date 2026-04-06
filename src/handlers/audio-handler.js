@@ -68,7 +68,7 @@ function extractDateFromArgs(args, timestamp) {
   return { args: remaining, dateFlag };
 }
 const { transcribeAudio } = require("../services/transcriptionService");
-const { parseCommand } = require("../utils/parse");
+const { parseCommand, extractFlagsFromAudio } = require("../utils/parse");
 const { time } = require("../services/obsidianService");
 const { getHandlerMetricName, saveUndoContext } = require("../services/undoService");
 const fs = require("fs-extra");
@@ -154,28 +154,33 @@ module.exports = {
           console.log("[AUDIO HANDLER] Data extraída:", extracted.dateFlag);
         }
       }
+      
+      // Extrai flags do final do áudio (ex: "data hoje" ou "data-hoje" ou ". data hoje")
+      const audioFlags = extractFlagsFromAudio(transcription);
+      console.log("[AUDIO HANDLER] Transcription:", transcription);
+      console.log("[AUDIO HANDLER] Parsed before flags:", JSON.stringify(parsed));
+      if (Object.keys(audioFlags).length > 0) {
+        console.log("[AUDIO HANDLER] Flags extraídas do áudio:", audioFlags);
+        parsed.args = parsed.args || [];
+        for (const [key, value] of Object.entries(audioFlags)) {
+          parsed.args.push(`--${key}:${value}`);
+        }
+      }
 
       if (parsed) {
         const { getProfileHandlers } = require("../main");
         const profileHandlers = getProfileHandlers(profile);
         
+        console.log("[AUDIO HANDLER] profile:", profile);
+        console.log("[AUDIO HANDLER] profileHandlers:", profileHandlers.map(h => h.name));
+        
         for (const { name, handler: h } of profileHandlers) {
           if (h !== module.exports && h.match({ msg, parsed, chat })) {
+            console.log("[AUDIO HANDLER] Handler matched:", name);
             try {
-              const result = await h.handle({ msg, parsed, chat });
-              console.log("[AUDIO HANDLER] Handler executado:", name);
-
-              if (result && result.key) {
-                const metric = getHandlerMetricName(h);
-                if (metric) {
-                  saveUndoContext(msg.id?._serialized, {
-                    metric,
-                    timestamp: msg.timestamp,
-                    key: result.key,
-                    value: result.value,
-                  });
-                }
-              }
+              const result = await h.handle({ msg, parsed, chat, profile });
+              console.log("[AUDIO HANDLER] Handler executado:", name, "result:", result);
+              return;
             } catch (handlerErr) {
               console.error("[AUDIO HANDLER] Erro no handler delegado:", handlerErr.message);
               try { await msg.reply("Erro ao executar o comando do áudio."); } catch {}
@@ -183,6 +188,7 @@ module.exports = {
             break;
           }
         }
+        console.log("[AUDIO HANDLER] Nenhum handler matched para o comando");
       } else {
         console.log("[AUDIO HANDLER] Transcricao nao reconhecida:", trimmed);
         const allTriggers = getAllTriggers().join(", ");

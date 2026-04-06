@@ -18,6 +18,7 @@ module.exports = {
         }
 
         const dateOverride = flags.data ? resolveDateFlag(flags.data, msg.timestamp) : null;
+        const dateRefColumn = flags.dataref === "sim";
         const dateStr = dateOverride || getLogicalDate(msg.timestamp);
         const section = getSection("task");
         const result = await appendTaskToSection({ dateStr, taskText, section });

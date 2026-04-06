@@ -19,7 +19,7 @@ function getMediaFilename(msg) {
     return `media-${msg.id?._serialized || Date.now()}.${ext}`;
 }
 
-async function resolve(client, contactName, term) {
+async function resolve(client, contactName, term, options = {}) {
     const results = [];
     try {
         const chats = await client.getChats();
