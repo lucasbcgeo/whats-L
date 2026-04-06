@@ -17,6 +17,7 @@ const { client, setShuttingDown } = require("./lib/whatsappClient");
 const { checkpoint } = require("./services/dedupeService");
 const { syncMissedMessagesByCheckpoint } = require("./services/syncService");
 const { startWatching } = require("./services/headerWatcherService");
+const { startWatching: startLlmResumoWatching } = require("./services/llmResumoWatcherService");
 const { parseCommand } = require("./utils/parse");
 const { isProcessed, markProcessed } = require("./core/dedupe");
 const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
@@ -220,6 +221,7 @@ client.on("ready", async () => {
     loadIgnoreList();
     await syncMissedMessagesByCheckpoint(processMessage);
     startWatching(client);
+    startLlmResumoWatching(client);
 });
 
 client.on("message_create", async (msg) => {

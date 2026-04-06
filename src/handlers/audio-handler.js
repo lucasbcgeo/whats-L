@@ -69,7 +69,6 @@ function extractDateFromArgs(args, timestamp) {
 }
 const { transcribeAudio } = require("../services/transcriptionService");
 const { parseCommand, extractFlagsFromAudio } = require("../utils/parse");
-const { time } = require("../services/obsidianService");
 const { getHandlerMetricName, saveUndoContext } = require("../services/undoService");
 const fs = require("fs-extra");
 const os = require("os");
@@ -184,10 +183,9 @@ module.exports = {
             } catch (handlerErr) {
               console.error("[AUDIO HANDLER] Erro no handler delegado:", handlerErr.message);
               try { await msg.reply("Erro ao executar o comando do áudio."); } catch {}
-            }
-            break;
-          }
-        }
+             }
+           }
+         }
         console.log("[AUDIO HANDLER] Nenhum handler matched para o comando");
       } else {
         console.log("[AUDIO HANDLER] Transcricao nao reconhecida:", trimmed);

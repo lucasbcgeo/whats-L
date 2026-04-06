@@ -1,12 +1,9 @@
+require('dotenv').config({ override: true });
+
 const fs = require("fs-extra");
-const path = require("path");
 
-const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL;
-
-const PRE_PATH = "G:/Franklin/Outros/Guias/PRÉ Resumo Whatsapp.md";
-const RESUMO_PATH = "G:/Franklin/Outros/Guias/Resumo WhatsApp.md";
-const MAX_PRE_LINES = 20;
+const PRE_PATH = "G:/Franklin/Outros/Guias/PRÉ Resumo Whatsapp teste.md";
+const RESUMO_PATH = "G:/Franklin/Outros/Guias/Resumo WhatsApp teste.md";
 
 const SYSTEM_PROMPT = `Você é um assistente que atualiza um resumo de WhatsApp para uso familiar.
 
@@ -33,7 +30,6 @@ function buildMessages(preContent, resumoContent) {
     }
 
     userContent += `## Mensagens recentes (PRÉ):\n\n${preContent}\n\n`;
-
     userContent += `Atualize o resumo acima com as informações das mensagens recentes. Remova o que estiver desatualizado.`;
 
     return [
@@ -43,20 +39,23 @@ function buildMessages(preContent, resumoContent) {
 }
 
 async function callOllama(messages) {
+    const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
+    const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gpt-oss:120b";
+
     if (!OLLAMA_API_KEY) {
         throw new Error("OLLAMA_API_KEY não configurada no .env");
     }
 
     const { Ollama } = require("ollama");
-    const ollama = new Ollama({
+    const client = new Ollama({
         host: "https://ollama.com",
         headers: {
-            Authorization: `Bearer ${OLLAMA_API_KEY}`,
+            Authorization: "Bearer " + OLLAMA_API_KEY,
         },
     });
 
-    console.log(`[LLM RESUMO] Chamando Ollama Cloud (${OLLAMA_MODEL})...`);
-    const response = await ollama.chat({
+    console.log(`[TESTE] Chamando Ollama Cloud (${OLLAMA_MODEL})...`);
+    const response = await client.chat({
         model: OLLAMA_MODEL,
         messages,
         stream: false,
@@ -65,49 +64,23 @@ async function callOllama(messages) {
     return response.message.content;
 }
 
-function cleanPreFile() {
-    try {
-        const content = readFileSafe(PRE_PATH);
-        if (!content) return;
-
-        const lines = content.split("\n");
-        if (lines.length <= MAX_PRE_LINES) return;
-
-        const header = lines.find(l => l.startsWith("# ")) || "# PRÉ Resumo WhatsApp";
-        const recentLines = lines.slice(-MAX_PRE_LINES);
-
-        const newContent = `${header}\n\n${recentLines.join("\n")}\n`;
-        fs.writeFileSync(PRE_PATH, newContent, "utf8");
-        console.log(`[LLM RESUMO] PRÉ limpo: ${lines.length} → ${recentLines.length} linhas`);
-    } catch (e) {
-        console.error("[LLM RESUMO] Erro ao limpar PRÉ:", e.message);
-    }
-}
-
-async function processar() {
+async function testar() {
     const preContent = readFileSafe(PRE_PATH);
     const resumoContent = readFileSafe(RESUMO_PATH);
 
     if (!preContent) {
-        return { success: false, message: "Nada para processar — PRÉ vazio." };
+        console.log("[TESTE] PRÉ vazio - nada para testar");
+        return;
     }
 
-    console.log(`[LLM RESUMO] PRÉ: ${preContent.split("\n").length} linhas | Resumo: ${resumoContent.split("\n").length} linhas`);
+    console.log(`[TESTE] PRÉ: ${preContent.split("\n").length} linhas | Resumo: ${resumoContent.split("\n").length} linhas`);
 
     const messages = buildMessages(preContent, resumoContent);
     const result = await callOllama(messages);
 
-    if (!result || !result.trim()) {
-        return { success: false, message: "LLM retornou resposta vazia." };
-    }
-
-    await fs.ensureDir(path.dirname(RESUMO_PATH));
-    fs.writeFileSync(RESUMO_PATH, result.trim() + "\n", "utf8");
-    console.log("[LLM RESUMO] Resumo atualizado.");
-
-    cleanPreFile();
-
-    return { success: true, message: "Resumo atualizado com sucesso." };
+    console.log("\n=== RESPOSTA DO OLLAMA ===\n");
+    console.log(result);
+    console.log("\n=== FIM ===\n");
 }
 
-module.exports = { processar };
+testar().catch(console.error);

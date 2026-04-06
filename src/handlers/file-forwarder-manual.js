@@ -43,17 +43,17 @@ function cleanExpired() {
 
 function parseSelection(body) {
     const normalized = body.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    
+
     const numberWords = {
         "um": 1, "dois": 2, "duas": 2, "três": 3, "tres": 3, "quatro": 4,
         "cinco": 5, "seis": 6, "sete": 7, "oito": 8, "nove": 9, "dez": 10,
         "onze": 11, "doze": 12, "treze": 13, "quatorze": 14, "quinze": 15,
-        "dezasseis": 16, "dezesseis": 16, "dezassete": 17, "dezessete": 17,
-        "dezoito": 18, "dezanove": 19, "dezesseis": 20, "vinte": 20
+        "dezasseis": 16, "dezesseis": 16, "dezessete": 17,
+        "dezoito": 18, "dezenove": 19, "vinte": 20
     };
-    
+
     let indices = [];
-    
+
     // Primeiro: verificar se é digits com ranges (1-4, 1-4,7,8, 1,2,3)
     const digitWithRangePattern = normalized.match(/^[\d,\-\s]+$/);
     if (digitWithRangePattern) {
@@ -76,7 +76,7 @@ function parseSelection(body) {
         }
         return indices;
     }
-    
+
     // Segundo: números por extenso (um dois três)
     const wordParts = normalized.split(/[\s,]+/);
     for (const part of wordParts) {
@@ -84,28 +84,28 @@ function parseSelection(body) {
             indices.push(numberWords[part] - 1);
         }
     }
-    
+
     return indices;
 }
 
 async function sendFiles(targetChat, results, indices, msg) {
     const validIndices = indices.filter(i => i >= 0 && i < results.length);
-    
+
     if (validIndices.length === 0) {
         await msg.reply("Números inválidos. Envie novamente.");
         return;
     }
-    
+
     const invalid = indices.filter(i => i < 0 || i >= results.length);
     if (invalid.length > 0) {
         await msg.reply(`Alguns números são inválidos: ${invalid.map(i => i + 1).join(", ")}`);
         return;
     }
-    
+
     const chosen = validIndices.map(i => results[i]);
     let sentCount = 0;
     let errors = [];
-    
+
     for (const file of chosen) {
         try {
             const media = createMediaFromFile(file);
@@ -117,212 +117,21 @@ async function sendFiles(targetChat, results, indices, msg) {
             errors.push(file.name);
         } finally {
             if (file._temp) {
-                fs.remove(file.path).catch(() => {});
+                fs.remove(file.path).catch(() => { });
             }
         }
     }
-    
+
     if (errors.length > 0) {
         await msg.reply(`⚠️ Erro ao enviar: ${errors.join(", ")}`);
     }
-    
+
     if (sentCount === 1) {
         await msg.reply(`✅ *${chosen[0].name}* enviado para *${targetChat.name}*`);
     } else {
         await msg.reply(`✅ ${sentCount} arquivos enviados para *${targetChat.name}*:\n${chosen.map(f => `• ${f.name}`).join("\n")}`);
     }
 }
-
-module.exports = {
-    match({ msg, parsed, chat }) {
-        if (!chat?.isGroup) return false;
-
-        cleanExpired();
-
-        if (parsed && getHandlerForTrigger(parsed.cmd) === "file-forwarder-manual") return true;
-
-        const body = (msg.body || "").trim();
-        const lower = body.toLowerCase();
-
-        if (lower.match(/^#encaminhar\s/) || lower.match(/^registro\s+encaminhar\s/) || lower.match(/^encaminhar\s/)) return true;
-
-        if (/^[\d,\-\s]+$/.test(body)) {
-            const sel = pendingSelections.get(chat.id._serialized || msg.from);
-            if (sel) return true;
-        }
-        
-        const indices = parseSelection(body);
-        if (indices.length > 0) {
-            const sel = pendingSelections.get(chat.id._serialized || msg.from);
-            if (sel) return true;
-        }
-
-        return false;
-    },
-
-    async handle({ msg, parsed, chat, profile }) {
-        const body = (msg.body || parsed?.raw || "").trim();
-
-        console.log("[ENCAMINHAR] handle() chamado. body:", body, "| via audio:", !!parsed?._fuzzy);
-        console.log("[ENCAMINHAR] msg.from:", msg.from, "| msg.body:", JSON.stringify(msg.body));
-
-        const indices = parseSelection(body);
-        if (indices.length > 0) {
-            const sel = pendingSelections.get(chat.id._serialized || msg.from);
-            if (!sel) {
-                console.log("[ENCAMINHAR] Seleção numérica recebida mas sem pendência para:", msg.from);
-                console.log("[ENCAMINHAR] Pendências ativas:", [...pendingSelections.keys()]);
-                await msg.reply("Não há uma seleção pendente. Envie o comando *#encaminhar* novamente.");
-                return;
-            }
-
-            if (sel.type === "file") {
-                await sendFiles(sel.targetChat, sel.results, indices, msg);
-                pendingSelections.delete(msg.from);
-                return;
-            }
-
-            if (sel.type === "destSuggestion") {
-                if (indices.length !== 1 || indices[0] < 0 || indices[0] >= sel.suggestions.length) {
-                    await msg.reply("Número inválido. Envie novamente.");
-                    return;
-                }
-
-                const idx = indices[0];
-                const chosen = sel.suggestions[idx];
-                pendingSelections.delete(chat.id._serialized || msg.from);
-
-                console.log(`[ENCAMINHAR] Destino selecionado: "${chosen.name}" (era "${sel.originalDestino}")`);
-
-                const results = await searchFromSource(sel.arquivo, sel.fonte, client, sel.searchOptions || {});
-
-                if (results.length === 0) {
-                    await msg.reply(`Nenhum arquivo encontrado para "*${sel.arquivo}*".`);
-                    return;
-                }
-
-                const datarefNeeded = checkAndAskForDateRef(results, sel.searchOptions?.dateRefColumn, sel.arquivo, sel.fonte, chosen);
-                if (datarefNeeded) {
-                    const sent = await msg.reply(`ℹ️ Este documento vem de uma tabela financeira.\n\nUse *data de entrada* ou *data referência*?\n\n1. Data de entrada (data)\n2. Data referência (data_ref)\n\nResponda com 1 ou 2.`);
-                    pendingSelections.set(chat.id._serialized || msg.from, {
-                        type: "dateRefChoice", ts: Date.now(), msgId: sent?.id?._serialized,
-                        targetChat: chosen, results, arquivo: sel.arquivo, fonte: sel.fonte, profile: sel.profile, searchOptions: sel.searchOptions || {},
-                    });
-                    return;
-                }
-
-                if (results.length === 1) {
-                    const file = results[0];
-                    try {
-                        const media = createMediaFromFile(file);
-                        await chosen.sendMessage(media, { caption: file.name });
-                        await msg.reply(`✅ *${file.name}* enviado para *${chosen.name}*`);
-                    } catch (e) {
-                        console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
-                        await msg.reply("❌ Erro ao enviar o arquivo.");
-                    } finally {
-                        if (file._temp) fs.remove(file.path).catch(() => {});
-                    }
-                    return;
-                }
-
-                const list = results.map((r, i) => `${i + 1}. ${r.name} (${r.source})`).join("\n");
-                const sent = await msg.reply(`Encontrei ${results.length} arquivos:\n${list}\n\nResponda com o número.`);
-                pendingSelections.set(chat.id._serialized || msg.from, {
-                    type: "file", ts: Date.now(), msgId: sent?.id?._serialized,
-                    targetChat: chosen, results,
-                });
-                return;
-            }
-
-            if (sel.type === "sourceSuggestion") {
-                if (indices.length !== 1 || indices[0] < 0 || indices[0] >= sel.suggestions.length) {
-                    await msg.reply("Número inválido. Envie novamente.");
-                    return;
-                }
-
-                const idx = indices[0];
-                const chosenName = sel.suggestions[idx].name;
-                pendingSelections.delete(chat.id._serialized || msg.from);
-
-                console.log(`[ENCAMINHAR] Fonte selecionada: "${chosenName}" (era "${sel.originalFonte}")`);
-                await searchAndSend(client, msg, chat, sel.arquivo, sel.destino, chosenName, sel.profile, sel.searchOptions);
-                return;
-            }
-
-            if (sel.type === "dateRefChoice") {
-                if (indices.length !== 1 || (indices[0] !== 0 && indices[0] !== 1)) {
-                    await msg.reply("Número inválido. Responda com 1 ou 2.");
-                    return;
-                }
-
-                const idx = indices[0];
-                const useDateRef = (idx === 1);
-                const newSearchOptions = { ...sel.searchOptions, dateRefColumn: useDateRef };
-                pendingSelections.delete(msg.from);
-
-                console.log(`[ENCAMINHAR] Escolha data: ${useDateRef ? "data_ref" : "data"}`);
-                
-                const newResults = await searchFromSource(sel.arquivo, sel.fonte, client, newSearchOptions);
-
-                if (newResults.length === 0) {
-                    await msg.reply(`Nenhum arquivo encontrado com *${useDateRef ? "data referência" : "data de entrada"}*.`);
-                    return;
-                }
-
-                if (newResults.length === 1) {
-                    const chosen = newResults[0];
-                    try {
-                        const media = createMediaFromFile(chosen);
-                        await sel.targetChat.sendMessage(media, { caption: chosen.name });
-                        await msg.reply(`✅ *${chosen.name}* enviado para *${sel.targetChat.name}*`);
-                    } catch (e) {
-                        console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
-                        await msg.reply("❌ Erro ao enviar o arquivo.");
-                    }
-                    return;
-                }
-
-                const list = newResults.map((r, i) => `${i + 1}. ${r.name} (${r.source})`).join("\n");
-                const sent = await msg.reply(`Encontrei ${newResults.length} arquivos:\n${list}\n\nResponda com o número.`);
-                pendingSelections.set(chat.id._serialized || msg.from, {
-                    type: "file", ts: Date.now(), msgId: sent?.id?._serialized,
-                    targetChat: sel.targetChat, results: newResults,
-                });
-                return;
-            }
-
-            return;
-        }
-
-        const cmd = parseEncaminhar(body);
-        console.log("[ENCAMINHAR] parseEncaminhar result:", cmd);
-        if (!cmd) {
-            await msg.reply("Formato: *#encaminhar* arquivo *para:* destino *de:* fonte (de é opcional)");
-            return;
-        }
-
-        const { arquivo, destino, fonte, data, range, dataref } = cmd;
-
-        const searchOptions = {};
-        if (data) searchOptions.dateStart = data;
-        if (range) searchOptions.dateEnd = range;
-        if (dataref === "sim") searchOptions.dateRefColumn = true;
-
-        console.log(`[ENCAMINHAR] arquivo="${arquivo}" destino="${destino}" fonte="${fonte || 'todas'}" data="${data || 'default'}" range="${range || 'none'}" dataref="${dataref}"`);
-
-        if (!destino) {
-            console.log(`[ENCAMINHAR] Sem destino — enviando para o próprio chat: "${chat.name}"`);
-            await searchAndSendToChat(client, msg, chat, chat, arquivo, fonte, profile, searchOptions);
-            return;
-        }
-
-        await searchAndSend(client, msg, chat, arquivo, destino, fonte, profile, searchOptions);
-    },
-    
-    parseSelection,
-    sendFiles,
-};
 
 function parseEncaminhar(text) {
     const raw = (text || "").trim();
@@ -343,10 +152,10 @@ function parseEncaminhar(text) {
     const parts = rest.split('.');
     const mainPart = parts[0].trim();
     const afterDot = parts.slice(1).join('.').trim();
-    
+
     if (afterDot) {
         const dataValues = { "hoje": "today", "ontem": "yesterday", "anteontem": "day_before_yesterday", "amanha": "tomorrow", "amanhã": "tomorrow" };
-        
+
         const dataRangeMatch = afterDot.match(/\s*data\s+(.+?)\s+ate\s+(.+)/i);
         if (dataRangeMatch) {
             const startDate = dataRangeMatch[1].trim();
@@ -496,7 +305,7 @@ async function searchAndSendToChat(client, msg, chat, targetChat, arquivo, fonte
             console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
             await msg.reply("❌ Erro ao enviar o arquivo.");
         } finally {
-            if (file._temp) fs.remove(file.path).catch(() => {});
+            if (file._temp) fs.remove(file.path).catch(() => { });
         }
         return;
     }
@@ -511,17 +320,17 @@ async function searchAndSendToChat(client, msg, chat, targetChat, arquivo, fonte
 
 function parseSelection(body) {
     const normalized = body.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    
+
     const numberWords = {
         "um": 1, "dois": 2, "duas": 2, "três": 3, "tres": 3, "quatro": 4,
         "cinco": 5, "seis": 6, "sete": 7, "oito": 8, "nove": 9, "dez": 10,
         "onze": 11, "doze": 12, "treze": 13, "quatorze": 14, "quinze": 15,
         "dezasseis": 16, "dezesseis": 16, "dezassete": 17, "dezessete": 17,
-        "dezoito": 18, "dezanove": 19, "dezesseis": 20, "vinte": 20
+        "dezoito": 18, "dezanove": 19, "dezenove": 19, "vinte": 20
     };
-    
+
     let indices = [];
-    
+
     // Primeiro: verificar se é digits com ranges (1-4, 1-4,7,8, 1,2,3)
     const digitWithRangePattern = normalized.match(/^[\d,\-\s]+$/);
     if (digitWithRangePattern) {
@@ -544,7 +353,7 @@ function parseSelection(body) {
         }
         return indices;
     }
-    
+
     // Segundo: números por extenso (um dois três)
     const wordParts = normalized.split(/[\s,]+/);
     for (const part of wordParts) {
@@ -552,28 +361,28 @@ function parseSelection(body) {
             indices.push(numberWords[part] - 1);
         }
     }
-    
+
     return indices;
 }
 
 async function sendFiles(targetChat, results, indices, msg) {
     const validIndices = indices.filter(i => i >= 0 && i < results.length);
-    
+
     if (validIndices.length === 0) {
         await msg.reply("Números inválidos. Envie novamente.");
         return;
     }
-    
+
     const invalid = indices.filter(i => i < 0 || i >= results.length);
     if (invalid.length > 0) {
         await msg.reply(`Alguns números são inválidos: ${invalid.map(i => i + 1).join(", ")}`);
         return;
     }
-    
+
     const chosen = validIndices.map(i => results[i]);
     let sentCount = 0;
     let errors = [];
-    
+
     for (const file of chosen) {
         try {
             const media = createMediaFromFile(file);
@@ -585,15 +394,15 @@ async function sendFiles(targetChat, results, indices, msg) {
             errors.push(file.name);
         } finally {
             if (file._temp) {
-                fs.remove(file.path).catch(() => {});
+                fs.remove(file.path).catch(() => { });
             }
         }
     }
-    
+
     if (errors.length > 0) {
         await msg.reply(`⚠️ Erro ao enviar: ${errors.join(", ")}`);
     }
-    
+
     if (sentCount === 1) {
         await msg.reply(`✅ *${chosen[0].name}* enviado para *${targetChat.name}*`);
     } else {
@@ -659,7 +468,7 @@ async function searchAndSend(client, msg, chat, arquivo, destino, fonte, profile
             console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
             await msg.reply("❌ Erro ao enviar o arquivo.");
         } finally {
-            if (file._temp) fs.remove(file.path).catch(() => {});
+            if (file._temp) fs.remove(file.path).catch(() => { });
         }
         return;
     }
@@ -689,7 +498,7 @@ module.exports = {
             const sel = pendingSelections.get(chat.id._serialized || msg.from);
             if (sel) return true;
         }
-        
+
         // Also match written numbers (um dois três, um e dois, etc)
         const indices = parseSelection(body);
         if (indices.length > 0) {
@@ -764,7 +573,7 @@ module.exports = {
                         console.error("[ENCAMINHAR] Erro ao enviar:", e.message);
                         await msg.reply("❌ Erro ao enviar o arquivo.");
                     } finally {
-                        if (file._temp) fs.remove(file.path).catch(() => {});
+                        if (file._temp) fs.remove(file.path).catch(() => { });
                     }
                     return;
                 }
@@ -807,7 +616,7 @@ module.exports = {
                 pendingSelections.delete(msg.from);
 
                 console.log(`[ENCAMINHAR] Escolha data: ${useDateRef ? "data_ref" : "data"}`);
-                
+
                 // Re-search with new option
                 const newResults = await searchFromSource(sel.arquivo, sel.fonte, client, newSearchOptions);
 
@@ -865,11 +674,6 @@ module.exports = {
 
         await searchAndSend(client, msg, chat, arquivo, destino, fonte, profile, searchOptions);
     },
-};
-
-module.exports = {
-    match: module.exports.match,
-    handle: module.exports.handle,
     parseSelection,
     sendFiles,
 };

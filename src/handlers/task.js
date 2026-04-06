@@ -1,5 +1,4 @@
 const { appendTaskToSection } = require("../lib/obsidianClient");
-const { getLogicalDate } = require("../lib/obsidianClient").time;
 const { getHandlerForTrigger, getSection } = require("../config");
 const { parseFlags } = require("../utils/parse");
 const { resolveDateFlag } = require("../utils/dateParser");

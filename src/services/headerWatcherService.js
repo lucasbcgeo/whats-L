@@ -1,8 +1,8 @@
 const fs = require("fs");
 const path = require("path");
-const { getFileWatcherConfig } = require("../config");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "header_watcher_state.json");
+const RESUMO_PATH = "G:/Franklin/Outros/Guias/Resumo WhatsApp.md";
 
 let cachedGroupId = null;
 let cachedGroupName = null;
@@ -64,7 +64,7 @@ function parseMarkdown(filePath) {
 }
 
 function getWatcherConfig() {
-    return getFileWatcherConfig();
+    return { file: RESUMO_PATH, groupName: "Filhos de Franklin - Geral" };
 }
 
 function isClientReady(client) {

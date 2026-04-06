@@ -62,30 +62,28 @@ function parseFlags(args) {
         }
         
         // de e para: : é opcional no escrito (ex: de:franklin ou de franklin ou --de franklin)
-        m = a.match(/^--?de(?::|\s+(.+))?$/i) || a.match(/^--?(fonte|source)(?::|\s+(.+))?$/i);
+        const m = a.match(/^--?de(?::|\s+(.+))?$/i) || a.match(/^--?(fonte|source)(?::|\s+(.+))?$/i);
         if (m) {
             flags["de"] = m[2] || m[3] || m[1];
             continue;
         }
         
-        m = a.match(/^--?para(?::|\s+(.+))?$/i) || a.match(/^--?(destino|to|destination)(?::|\s+(.+))?$/i);
-        if (m) {
-            flags["para"] = m[2] || m[3] || m[1];
+        const m2 = a.match(/^--?para(?::|\s+(.+))?$/i) || a.match(/^--?(destino|to|destination)(?::|\s+(.+))?$/i);
+        if (m2) {
+            flags["para"] = m2[2] || m2[3] || m2[1];
             continue;
         }
         
-        // dataref usa -- sem - (ex: --dataref:sim)
-        m = a.match(/^--dataref:(.+)$/i);
-        if (m) {
-            flags["dataref"] = normalizeFlagValue(m[1]);
+        const m3 = a.match(/^--dataref:(.+)$/i);
+        if (m3) {
+            flags["dataref"] = normalizeFlagValue(m3[1]);
             continue;
         }
         
-        // Outras flags com --
-        m = a.match(/^--([^:]+):(.+)$/);
-        if (m) {
-            let key = m[1].toLowerCase();
-            let value = m[2];
+        const m4 = a.match(/^--([^:]+):(.+)$/);
+        if (m4) {
+            let key = m4[1].toLowerCase();
+            let value = m4[2];
             
             const config = data.flags?.[key];
             if (config?.values) {
@@ -145,7 +143,7 @@ function extractFlagsFromAudio(text) {
     const rangeKeyword = data.flags?.data?.range?.value || "ate";
     
     // Match "data hoje ate 15/05" (usando a keyword do config)
-    const rangeRegex = new RegExp(`\\\\s*data\\\\s+(.+?)\\\\s+${rangeKeyword}\\\\s+(.+?)\\\\s*$`, 'i');
+    const rangeRegex = new RegExp(`\\s*data\\s+(.+?)\\s+${rangeKeyword}\\s+(.+?)\\s*$`, 'i');
     const dataRangeMatch = lastPart.match(rangeRegex);
     if (dataRangeMatch) {
         const startDate = dataRangeMatch[1].trim();
