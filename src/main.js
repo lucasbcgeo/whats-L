@@ -141,10 +141,10 @@ function getProfileHandlers(profileName) {
     return handlers;
 }
 
-async function processMessage(msg, { silent } = { silent: false }) {
+async function processMessage(msg, { silent, force } = { silent: false, force: false }) {
     try {
         console.log("[MSG IN]", msg?.id?._serialized, msg.type, msg.hasMedia ? "MEDIA" : "TEXT");
-        if (isProcessed(msg)) return false;
+        if (!force && isProcessed(msg)) return false;
 
         const chat = await msg.getChat();
         const profile = resolveProfile({
@@ -200,9 +200,11 @@ async function processMessage(msg, { silent } = { silent: false }) {
                     }
                 }
 
-                markProcessed(msg);
-                checkpoint.setLastTs(msg.timestamp);
-                if (!silent) console.log("[DONE] mensagem processada");
+                if (!silent) {
+                    markProcessed(msg);
+                    checkpoint.setLastTs(msg.timestamp);
+                    console.log("[DONE] mensagem processada");
+                }
                 return true;
             }
         }
@@ -216,19 +218,64 @@ async function processMessage(msg, { silent } = { silent: false }) {
     }
 }
 
+async function runBackfillOnStart(processMessageFn, client) {
+    const { checkpoint } = require("./services/dedupeService");
+    const { smartBackfill } = require("./services/smartBackfillService");
+    const checkpointBefore = checkpoint.getLastTs();
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const timeDiff = nowSeconds - checkpointBefore;
+    const MAX_BACKFILL_GAP = 300;
+    
+    console.log(`[BACKFILL] checkpoint antes: ${checkpointBefore} | agora: ${nowSeconds} | diferença: ${timeDiff}s`);
+    
+    if (timeDiff <= MAX_BACKFILL_GAP) {
+        console.log(`[BACKFILL] Apenas ${timeDiff}s desde última execução. Pulando backfill.`);
+        return;
+    }
+    
+    console.log(`[BACKFILL] Processando mensagens por profile (últimos ${Math.floor(timeDiff/60)}min)...`);
+    try {
+        await smartBackfill(processMessageFn, client);
+    } catch (e) {
+        console.error("[BACKFILL] Erro ao processar retroativo:", e.message);
+    }
+}
+
 client.on("ready", async () => {
     console.log("✅ Conectado.");
-    loadIgnoreList();
-    await syncMissedMessagesByCheckpoint(processMessage);
-    startWatching(client);
-    startLlmResumoWatching(client);
+    try {
+        loadIgnoreList();
+        await syncMissedMessagesByCheckpoint(processMessage);
+    } catch (e) {
+        console.error("[READY] Erro no sync:", e.message);
+    }
+    try {
+        await runBackfillOnStart(processMessage, client);
+    } catch (e) {
+        console.error("[READY] Erro no backfill:", e.message);
+    }
+    try {
+        startWatching(client);
+        console.log("[READY] Header watcher iniciado");
+    } catch (e) {
+        console.error("[READY] Erro header watcher:", e.message);
+    }
+    try {
+        startLlmResumoWatching(client);
+        console.log("[READY] LLM Resumo watcher iniciado");
+    } catch (e) {
+        console.error("[READY] Erro LLM Resumo (não bloqueia app):", e.message);
+    }
+    console.log("[READY] Todos os serviços iniciados!");
 });
 
 client.on("message_create", async (msg) => {
+    console.log("[EVENT] message_create received from:", msg.from, "type:", msg.type);
     try {
         const chat = await msg.getChat();
         
         if (chat.isGroup && shouldIgnoreGroup(chat.name)) {
+            console.log("[EVENT] Ignored group:", chat.name);
             return;
         }
         

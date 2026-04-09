@@ -62,6 +62,7 @@ async function processPreFile() {
     } finally {
         llmProcessing = false;
     }
+    console.log("[LLM RESUMO WATCHER] Processo terminado, livre para nova requisição.");
 }
 
 function startWatching(client) {

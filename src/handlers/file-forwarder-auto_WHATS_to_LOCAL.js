@@ -155,10 +155,13 @@ module.exports = {
         if (chat?.isGroup) {
             label = chat.name;
             const profileConfig = data.profiles?.[profile];
+            console.log(`[FILE TO LOCAL] Grupo ${chat.name} | profile: ${profile} | config: ${JSON.stringify(profileConfig?.allowedDestinations)}`);
             if (profileConfig) {
                 const allowedDests = profileConfig.allowedDestinations || [];
+                console.log(`[FILE TO LOCAL] allowedDests: ${JSON.stringify(allowedDests)}`);
                 for (const destKey of allowedDests) {
                     const destConfig = data.destinations?.[destKey];
+                    console.log(`[FILE TO LOCAL] destKey: ${destKey} → localPath: ${destConfig?.localPath}`);
                     if (destConfig?.localPath) {
                         localPath = destConfig.localPath;
                         break;
@@ -169,6 +172,7 @@ module.exports = {
                 console.error(`[FILE TO LOCAL] Grupo ${chat.name} sem localPath configurado.`);
                 return;
             }
+            console.log(`[FILE TO LOCAL] localPath final: ${localPath}`);
         } else {
             const src = matchSource(author);
             if (!src) return;

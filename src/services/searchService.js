@@ -21,6 +21,20 @@ function fuzzyMatch(text, term) {
     return words.every(w => lower.includes(w));
 }
 
+function getExistingDateColumns(db, tableName) {
+    try {
+        const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+        const colNames = columns.map(c => c.name.toLowerCase());
+        if (colNames.includes('data_ref')) return { dateCol: 'data_ref', hasDateRef: true };
+        if (colNames.includes('data_mov')) return { dateCol: 'data_mov', hasDateRef: false };
+        if (colNames.includes('data')) return { dateCol: 'data', hasDateRef: false };
+        if (colNames.includes('data_criacao')) return { dateCol: 'data_criacao', hasDateRef: false };
+        return { dateCol: null, hasDateRef: false };
+    } catch {
+        return { dateCol: null, hasDateRef: false };
+    }
+}
+
 function searchDb(src, term, options = {}) {
     if (!src.db || src.db.trim() === "") {
         console.log("[SEARCH] Source sem db, pulando:", src.label);
@@ -33,7 +47,12 @@ function searchDb(src, term, options = {}) {
         const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='view' AND name LIKE 'view_%'").all();
         
         for (const table of tables) {
-            const dateCol = options.dateRefColumn ? "data_ref" : "data_mov";
+            const { dateCol: detectedDateCol, hasDateRef } = getExistingDateColumns(db, table.name);
+            if (!detectedDateCol) {
+                console.log("[SEARCH] Tabela sem coluna de data:", table.name);
+                continue;
+            }
+            const dateCol = options.dateRefColumn && hasDateRef ? "data_ref" : detectedDateCol;
             const isFinancialTable = table.name.toLowerCase().includes('financeiro') || table.name.toLowerCase().includes('guia_') || table.name.toLowerCase().includes('finan_');
             
             let query = `SELECT anexo, anexo_path, ${dateCol} FROM ${table.name} WHERE anexo IS NOT NULL AND anexo != ''`;
@@ -71,7 +90,13 @@ function searchDb(src, term, options = {}) {
 
         if (results.length === 0) {
             try {
-                const dateCol = options.dateRefColumn ? "data_ref" : "data_mov";
+                const { dateCol: detectedDateCol } = getExistingDateColumns(db, 'anexos');
+                if (!detectedDateCol) {
+                    console.log("[SEARCH] Tabela anexos sem coluna de data");
+                    db.close();
+                    return results;
+                }
+                const dateCol = detectedDateCol;
                 let query = `SELECT anexo, anexo_path, ${dateCol} FROM anexos WHERE anexo IS NOT NULL AND anexo != ''`;
                 const params = [];
                 

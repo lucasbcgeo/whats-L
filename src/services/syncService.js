@@ -50,7 +50,8 @@ function getProfileGroupNames() {
     return [...new Set(groupNames)];
 }
 
-async function syncMissedMessagesByCheckpoint(processMessageFn) {
+async function syncMissedMessagesByCheckpoint(processMessageFn, options = {}) {
+  const { force } = options;
   const forwardNumbers = getForwardSourceNumbers();
   const profileGroupNames = getProfileGroupNames();
   console.log(`[SYNC] Números para sync: ${forwardNumbers.join(', ')}`);
@@ -75,11 +76,35 @@ async function syncMissedMessagesByCheckpoint(processMessageFn) {
   }
 
   let lastTs = checkpoint.getLastTs();
-  console.log(`🔄 Sync por checkpoint. last_ts=${lastTs} | limit=${BACKFILL_LIMIT} | chats=${targetChats.length}`);
+  const modeText = force ? "BACKFILL" : "checkpoint";
+  console.log(`🔄 Sync por ${modeText}. last_ts=${lastTs} | limit=${BACKFILL_LIMIT} | chats=${targetChats.length}`);
 
-  for (const chat of targetChats) {
+  async function fetchMessagesWithRetry(chat, opts, maxRetries = 0) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await chat.fetchMessages(opts);
+    } catch (e) {
+      if (e.message?.includes('waitForChatLoading') || e.message?.includes('Cannot read properties')) {
+        console.log(`[SYNC] Retry ${i + 1}/${maxRetries} para chat ${chat.name || chat.id._serialized}...`);
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        throw e;
+      }
+    }
+  }
+  if (maxRetries > 0) {
+    console.log(`[SYNC] Pulando chat ${chat.name || chat.id._serialized} (inacessível após ${maxRetries} tentativas)`);
+  }
+  return null;
+}
+
+for (const chat of targetChats) {
     console.log(`\n--- Sync chat: ${chat.name || chat.id._serialized} ---`);
     try {
+      if (!chat || !chat.fetchMessages) {
+        console.error(`❌ Chat inválido: ${chat?.id?._serialized || 'unknown'}`);
+        continue;
+      }
       let before = undefined;
       let loops = 0;
       let processed = 0;
@@ -90,7 +115,7 @@ async function syncMissedMessagesByCheckpoint(processMessageFn) {
         const opts = { limit: BACKFILL_LIMIT };
         if (before) opts.before = before;
 
-        const batch = await chat.fetchMessages(opts);
+        const batch = await fetchMessagesWithRetry(chat, opts);
         if (!batch || batch.length === 0) break;
 
         const sorted = batch.slice().sort((a, b) => a.timestamp - b.timestamp);
@@ -100,7 +125,7 @@ async function syncMissedMessagesByCheckpoint(processMessageFn) {
         for (const msg of sorted) {
           if (msg.timestamp <= lastTs) continue;
 
-          const did = await processMessageFn(msg, { silent: true });
+          const did = await processMessageFn(msg, { silent: true, force: force });
           if (did) {
             processed++;
             anyAdvanced = true;
@@ -123,3 +148,7 @@ async function syncMissedMessagesByCheckpoint(processMessageFn) {
 }
 
 module.exports = { syncMissedMessagesByCheckpoint };
+
+function getLastCheckpointGlobal() {
+    return checkpoint.getLastTs();
+}
