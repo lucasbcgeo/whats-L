@@ -5,6 +5,8 @@ const { processar: processarResumo } = require("./llmResumoService");
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "llm_resumo_watcher_state.json");
 
 let llmProcessing = false;
+let lastProcessedAt = 0;
+const COOLDOWN_MS = 5 * 60 * 1000;
 let watcher = null;
 let debounceTimer = null;
 let clientRef = null;
@@ -41,6 +43,12 @@ async function processPreFile() {
         return;
     }
 
+    const elapsed = Date.now() - lastProcessedAt;
+    if (lastProcessedAt > 0 && elapsed < COOLDOWN_MS) {
+        console.log(`[LLM RESUMO WATCHER] Cooldown ativo (${Math.round((COOLDOWN_MS - elapsed) / 1000)}s restantes). Ignorando.`);
+        return;
+    }
+
     llmProcessing = true;
     try {
         const prePath = getPrePath();
@@ -52,6 +60,10 @@ async function processPreFile() {
         console.log("[LLM RESUMO WATCHER] PRE alterado. Chamando LLM para atualizar resumo...");
         const result = await processarResumo();
         console.log(`[LLM RESUMO WATCHER] LLM: ${result.message}`);
+
+        if (result.success) {
+            lastProcessedAt = Date.now();
+        }
 
         const state = loadState();
         state.lastProcessed = new Date().toISOString();

@@ -1,5 +1,6 @@
 const path = require("path");
 const qrcode = require("qrcode-terminal");
+const Message = require('whatsapp-web.js/src/structures/Message');
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const { GROUP_ID } = require("../config/env");
 const { data } = require("../config");
@@ -92,20 +93,101 @@ async function getTargetChats(additionalIds = []) {
 
   for (const id of additionalIds) {
     if (!id) continue;
+    if (id.includes("@lid")) {
+      console.log(`⚠️ Pulando LID inválido: "${id}"`);
+      continue;
+    }
     try {
       const c = await client.getChatById(id);
       if (c) targetChats.push(c);
     } catch (e) {
-      console.log(`⚠️ Não foi possível carregar chat DM "${id}" para sync.`);
+      console.log(`⚠️ Não foi possível carregar chat DM "${id}" para sync: ${e.message}`);
     }
   }
 
   return targetChats;
 }
 
+async function fetchChatMessages(chatId, limit) {
+    let messages = await client.pupPage.evaluate(
+        async (chatId, limit) => {
+            const msgFilter = (m) => {
+                if (m.isNotification) return false;
+                return true;
+            };
+
+            const chatWid = window.require('WAWebWidFactory').createWid(chatId);
+            const ChatCollection = window.require('WAWebCollections').Chat;
+
+            let chat = ChatCollection.get(chatWid);
+
+            if (!chat) {
+                try {
+                    const allChats = ChatCollection.getModelsArray();
+                    chat = allChats.find(c => {
+                        try { return c.id && c.id.equals(chatWid); } catch { return false; }
+                    });
+                } catch {}
+            }
+
+            if (!chat) {
+                try {
+                    const allChats = ChatCollection.getModelsArray();
+                    chat = allChats.find(c => c.id?._serialized === chatId);
+                } catch {}
+            }
+
+            if (!chat) {
+                try {
+                    const result = await window.require('WAWebFindChatAction')
+                        .findOrCreateLatestChat(chatWid);
+                    chat = result?.chat;
+                } catch (e) {
+                    return { error: 'chat_not_found', detail: e.message || String(e) };
+                }
+            }
+
+            if (!chat) {
+                return { error: 'chat_not_found', detail: 'chat object null after all lookups' };
+            }
+
+            let msgs = chat.msgs.getModelsArray().filter(msgFilter);
+
+            if (limit > 0 && msgs.length < limit) {
+                try {
+                    const loadedMessages = await window
+                        .require('WAWebChatLoadMessages')
+                        .loadEarlierMsgs(chat, chat.msgs);
+                    if (loadedMessages && loadedMessages.length) {
+                        msgs = [...loadedMessages.filter(msgFilter), ...msgs];
+                    }
+                } catch {}
+            }
+
+            if (limit > 0 && msgs.length > limit) {
+                msgs.sort((a, b) => (a.t > b.t ? 1 : -1));
+                msgs = msgs.splice(msgs.length - limit);
+            }
+
+            return msgs.map((m) => window.WWebJS.getMessageModel(m));
+        },
+        chatId,
+        limit
+    );
+
+    if (messages && messages.error) {
+        const err = new Error(messages.detail || messages.error);
+        err.code = messages.error;
+        throw err;
+    }
+
+return messages.map((m) => new Message(client, m));
+}
+
 module.exports = {
   client,
   getTargetGroup,
   getTargetChats,
+  fetchChatMessages,
   setShuttingDown: (v) => { shuttingDown = v; },
 };

@@ -6,6 +6,8 @@ const RESUMO_PATH = "G:/Franklin/Outros/Guias/Resumo WhatsApp.md";
 
 let cachedGroupId = null;
 let cachedGroupName = null;
+let isSyncing = false;
+let initialSyncTimer = null;
 
 async function resolveTargetGroup(client, groupName) {
     if (cachedGroupId && cachedGroupName === groupName) {
@@ -75,62 +77,87 @@ function isClientReady(client) {
     }
 }
 
+function normalizeTitle(title) {
+    return title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
 async function syncFranklinHeaders(client) {
-    if (!isClientReady(client)) {
-        console.warn("[HEADER WATCHER] Cliente não está pronto. Pulando sync.");
+    if (isSyncing) {
+        console.log("[HEADER WATCHER] Sync em andamento, pulando.");
         return;
     }
+    isSyncing = true;
 
-    const config = getWatcherConfig();
-    if (!config) {
-        console.warn("⚠️ Perfil secretário_franklin não configurado. Pulando watcher.");
-        return;
-    }
-
-    let targetGroup;
     try {
-        targetGroup = await resolveTargetGroup(client, config.groupName);
-    } catch (e) {
-        if (e.message?.includes("detached Frame")) {
-            console.error("[HEADER WATCHER] Frame desconectado durante resolução do grupo. Aguardando reconexão...");
+        if (!isClientReady(client)) {
+            console.warn("[HEADER WATCHER] Cliente não está pronto. Pulando sync.");
             return;
         }
-        throw e;
-    }
 
-    if (!targetGroup) {
-        console.error(`[HEADER WATCHER] Grupo "${config.groupName}" não encontrado.`);
-        return;
-    }
+        const config = getWatcherConfig();
+        if (!config) {
+            console.warn("⚠️ Perfil secretário_franklin não configurado. Pulando watcher.");
+            return;
+        }
 
-    const headers = parseMarkdown(config.file);
-    const state = loadState();
-    let sentCount = 0;
-
-    for (const { title, body } of headers) {
-        if (body === state[title]) continue;
-        const titleParts = title.split(/\s+/);
-        const whatsappTitle = titleParts.length > 1
-            ? `${titleParts[0]} *${titleParts.slice(1).join(" ")}*`
-            : `*${title}*`;
-        const formattedBody = mdToWhatsApp(body.replace(/"/g, "").trim());
-        const message = `${whatsappTitle}\n\n${formattedBody}`;
+        let targetGroup;
         try {
-            await targetGroup.sendMessage(message);
-            console.log(`[HEADER WATCHER] Enviado: ${title}`);
-            state[title] = body;
-            sentCount++;
+            targetGroup = await resolveTargetGroup(client, config.groupName);
         } catch (e) {
             if (e.message?.includes("detached Frame")) {
-                console.error("[HEADER WATCHER] Frame desconectado. Interrompendo sync e aguardando reconexão...");
-                break;
+                console.error("[HEADER WATCHER] Frame desconectado durante resolução do grupo. Aguardando reconexão...");
+                return;
             }
-            console.error(`[HEADER WATCHER] Erro ao enviar "${title}":`, e.message);
+            throw e;
         }
-    }
 
-    if (sentCount > 0) saveState(state);
-    if (sentCount > 0) console.log(`[HEADER WATCHER] ${sentCount} seção(ões) atualizada(s) em "${config.groupName}".`);
+        if (!targetGroup) {
+            console.error(`[HEADER WATCHER] Grupo "${config.groupName}" não encontrado.`);
+            return;
+        }
+
+        const headers = parseMarkdown(config.file);
+        const state = loadState();
+
+        const currentNormalizedTitles = new Set(headers.map(h => normalizeTitle(h.title)));
+
+        let sentCount = 0;
+
+        for (const { title, body } of headers) {
+            const normKey = normalizeTitle(title);
+            const stateValue = state[title] || state[normKey] || state[Object.keys(state).find(k => normalizeTitle(k) === normKey)];
+            if (body === stateValue) continue;
+            const titleParts = title.split(/\s+/);
+            const whatsappTitle = titleParts.length > 1
+                ? `${titleParts[0]} *${titleParts.slice(1).join(" ")}*`
+                : `*${title}*`;
+            const formattedBody = mdToWhatsApp(body.replace(/"/g, "").trim());
+            const message = `${whatsappTitle}\n\n${formattedBody}`;
+            try {
+                await targetGroup.sendMessage(message);
+                console.log(`[HEADER WATCHER] Enviado: ${title}`);
+                state[title] = body;
+                sentCount++;
+            } catch (e) {
+                if (e.message?.includes("detached Frame")) {
+                    console.error("[HEADER WATCHER] Frame desconectado. Interrompendo sync e aguardando reconexão...");
+                    break;
+                }
+                console.error(`[HEADER WATCHER] Erro ao enviar "${title}":`, e.message);
+            }
+        }
+
+        for (const key of Object.keys(state)) {
+            if (!currentNormalizedTitles.has(normalizeTitle(key)) && key !== "lastProcessed" && key !== "lastResult") {
+                delete state[key];
+            }
+        }
+
+        saveState(state);
+        if (sentCount > 0) console.log(`[HEADER WATCHER] ${sentCount} seção(ões) atualizada(s) em "${config.groupName}".`);
+    } finally {
+        isSyncing = false;
+    }
 }
 
 let watcher = null;
@@ -148,9 +175,10 @@ function startWatching(client) {
     const runInitialSync = () => {
         if (!isClientReady(clientRef)) {
             console.log("[HEADER WATCHER] Aguardando cliente ficar pronto...");
-            setTimeout(runInitialSync, 2000);
+            initialSyncTimer = setTimeout(runInitialSync, 2000);
             return;
         }
+        initialSyncTimer = null;
         syncFranklinHeaders(clientRef).catch(e => {
             console.error("[HEADER WATCHER] Erro no sync inicial:", e.message);
         });
@@ -180,11 +208,16 @@ function startWatching(client) {
 }
 
 function stopWatching() {
+    if (initialSyncTimer) {
+        clearTimeout(initialSyncTimer);
+        initialSyncTimer = null;
+    }
     if (watcher) {
         watcher.close();
         watcher = null;
     }
     clearTimeout(debounceTimer);
+    debounceTimer = null;
 }
 
 module.exports = {

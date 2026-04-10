@@ -1,8 +1,18 @@
-const { getTargetChats } = require("../lib/whatsappClient");
 const { checkpoint } = require("./dedupeService");
 const { BACKFILL_LIMIT } = require("../config/env");
 const { data } = require("../config");
-const { client } = require("../lib/whatsappClient");
+const { client, fetchChatMessages, getTargetChats } = require("../lib/whatsappClient");
+
+class DetachedFrameError extends Error {
+    constructor() {
+        super("Puppeteer frame detached - sessao invalida");
+        this.name = "DetachedFrameError";
+    }
+}
+
+function isDetachedFrameError(e) {
+    return e?.message?.includes("detached Frame") || e?.message?.includes("Session expired") || e?.message?.includes("Target closed");
+}
 
 function getForwardSourceNumbers() {
     const contacts = data.labels?.contacts || {};
@@ -29,7 +39,7 @@ function getForwardSourceNumbers() {
         }
     }
     
-    return [...new Set(numbers)];
+    return [...new Set(numbers)].filter(n => !n.includes("@lid") && !n.endsWith("@lid"));
 }
 
 function getProfileGroupNames() {
@@ -48,6 +58,25 @@ function getProfileGroupNames() {
     }
     
     return [...new Set(groupNames)];
+}
+
+async function fetchMessagesWithRetry(chatId, chatName, limit, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const messages = await fetchChatMessages(chatId, limit);
+      return messages;
+    } catch (e) {
+      if (isDetachedFrameError(e)) throw new DetachedFrameError();
+      if (e.code === 'chat_not_found' || e.message?.includes('waitForChatLoading') || e.message?.includes('Cannot read properties')) {
+        console.log(`[SYNC] Retry ${i + 1}/${maxRetries} para chat ${chatName}... (${e.message?.substring(0, 80)})`);
+        await new Promise(r => setTimeout(r, 3000 * (i + 1)));
+      } else {
+        throw e;
+      }
+    }
+  }
+  console.log(`[SYNC] Pulando chat ${chatName} (inacessível após ${maxRetries} tentativas)`);
+  return null;
 }
 
 async function syncMissedMessagesByCheckpoint(processMessageFn, options = {}) {
@@ -79,30 +108,17 @@ async function syncMissedMessagesByCheckpoint(processMessageFn, options = {}) {
   const modeText = force ? "BACKFILL" : "checkpoint";
   console.log(`🔄 Sync por ${modeText}. last_ts=${lastTs} | limit=${BACKFILL_LIMIT} | chats=${targetChats.length}`);
 
-  async function fetchMessagesWithRetry(chat, opts, maxRetries = 0) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await chat.fetchMessages(opts);
-    } catch (e) {
-      if (e.message?.includes('waitForChatLoading') || e.message?.includes('Cannot read properties')) {
-        console.log(`[SYNC] Retry ${i + 1}/${maxRetries} para chat ${chat.name || chat.id._serialized}...`);
-        await new Promise(r => setTimeout(r, 1000));
-      } else {
-        throw e;
-      }
-    }
-  }
-  if (maxRetries > 0) {
-    console.log(`[SYNC] Pulando chat ${chat.name || chat.id._serialized} (inacessível após ${maxRetries} tentativas)`);
-  }
-  return null;
-}
-
 for (const chat of targetChats) {
-    console.log(`\n--- Sync chat: ${chat.name || chat.id._serialized} ---`);
+    const chatId = chat.id._serialized;
+    const chatName = chat.name || chatId;
+    console.log(`\n--- Sync chat: ${chatName} ---`);
     try {
-      if (!chat || !chat.fetchMessages) {
-        console.error(`❌ Chat inválido: ${chat?.id?._serialized || 'unknown'}`);
+      if (!chat || !chat.id) {
+        console.error(`❌ Chat inválido: ${chatId}`);
+        continue;
+      }
+      if (chatId.includes("@lid")) {
+        console.log(`[SYNC] Pulando LID inválido: ${chatId}`);
         continue;
       }
       let before = undefined;
@@ -112,10 +128,7 @@ for (const chat of targetChats) {
 
       while (loops < 50) {
         loops++;
-        const opts = { limit: BACKFILL_LIMIT };
-        if (before) opts.before = before;
-
-        const batch = await fetchMessagesWithRetry(chat, opts);
+        const batch = await fetchMessagesWithRetry(chatId, chatName, BACKFILL_LIMIT);
         if (!batch || batch.length === 0) break;
 
         const sorted = batch.slice().sort((a, b) => a.timestamp - b.timestamp);
@@ -140,8 +153,14 @@ for (const chat of targetChats) {
         lastTs = checkpoint.getLastTs();
       }
       console.log(`✅ Sync finalizado para este chat. processadas=${processed} ignoradas=${skipped}`);
+      await new Promise(r => setTimeout(r, 1000));
     } catch (e) {
-      console.error(`❌ Erro no sync do chat ${chat.id._serialized}:`, e && e.stack ? e.stack : e);
+      if (e instanceof DetachedFrameError) {
+        console.error(`❌ Frame desconectado durante sync. Abortando sync para preservar sessão.`);
+        console.log(`\n✅ Sync abortado (frame detached). last_ts=${checkpoint.getLastTs()}`);
+        return;
+      }
+      console.error(`❌ Erro no sync do chat ${chatId}:`, e && e.stack ? e.stack : e);
     }
   }
   console.log(`\n✅ Sync global finalizado. last_ts=${checkpoint.getLastTs()}`);

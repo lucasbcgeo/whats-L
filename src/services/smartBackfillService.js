@@ -1,12 +1,23 @@
 const fs = require("fs");
 const path = require("path");
 const { data } = require("../config");
-const { getTargetChats } = require("../lib/whatsappClient");
+const { client, fetchChatMessages } = require("../lib/whatsappClient");
 const { checkpoint } = require("./dedupeService");
 
 const PROFILE_CHECKPOINT_FILE = path.join(__dirname, "..", "..", "data", "profile_checkpoints.json");
 
 const MAX_BACKFILL_GAP = 300;
+
+class DetachedFrameError extends Error {
+    constructor() {
+        super("Puppeteer frame detached - sessao invalida");
+        this.name = "DetachedFrameError";
+    }
+}
+
+function isDetachedFrameError(e) {
+    return e?.message?.includes("detached Frame") || e?.message?.includes("Session expired") || e?.message?.includes("Target closed");
+}
 
 function loadProfileCheckpoints() {
     try {
@@ -71,6 +82,7 @@ async function getProfileChats(profileKey, client) {
     const profileChats = [];
 
     for (const contact of contacts) {
+        if (contact.includes("@lid")) continue;
         const contactId = contact.includes("@c.us") ? contact : `${contact}@c.us`;
         const chat = allChats.find(c => c.id._serialized === contactId);
         if (chat) profileChats.push(chat);
@@ -124,7 +136,30 @@ async function smartBackfill(processMessageFn, client) {
             let latestTs = profileLastTs;
 
             for (const chat of profileChats) {
-                const batch = await chat.fetchMessages({ limit: 100, before: undefined });
+                const chatId = chat.id._serialized;
+                const chatName = chat.name || chatId;
+
+                if (chatId.includes("@lid")) {
+                    console.log(`[SMART BACKFILL] Pulando LID inválido: ${chatId}`);
+                    continue;
+                }
+
+                let batch;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        batch = await fetchChatMessages(chatId, 100);
+                        break;
+                    } catch (fetchErr) {
+                        if (isDetachedFrameError(fetchErr) || fetchErr instanceof DetachedFrameError) throw new DetachedFrameError();
+                        if (fetchErr.code === 'chat_not_found' || fetchErr.message?.includes('waitForChatLoading') || fetchErr.message?.includes('Cannot read properties')) {
+                            if (attempt < 2) {
+                                await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+                                continue;
+                            }
+                        }
+                        throw fetchErr;
+                    }
+                }
                 if (!batch || batch.length === 0) continue;
 
                 const newMessages = batch.filter(m => m.timestamp > profileLastTs);
@@ -141,6 +176,8 @@ async function smartBackfill(processMessageFn, client) {
                         profileSkipped++;
                     }
                 }
+
+                await new Promise(r => setTimeout(r, 500));
             }
 
             if (latestTs > profileLastTs) {
@@ -152,6 +189,11 @@ async function smartBackfill(processMessageFn, client) {
             console.log(`[SMART BACKFILL] ${profileKey}: ${profileProcessed} processadas, ${profileSkipped} ignoradas`);
 
         } catch (e) {
+            if (e instanceof DetachedFrameError) {
+                console.error(`[SMART BACKFILL] Frame desconectado. Abortando backfill para preservar sessão.`);
+                console.log(`[SMART BACKFILL] TOTAL (abortado): ${totalProcessed} processadas, ${totalSkipped} ignoradas`);
+                return;
+            }
             console.error(`[SMART BACKFILL] ${profileKey} erro:`, e.message);
         }
     }

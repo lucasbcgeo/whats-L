@@ -2,7 +2,7 @@ const fs = require('fs');
 const dotenvPath = require('path').join(__dirname, '..', '.env');
 
 if (fs.existsSync(dotenvPath)) {
-  const result = require('dotenv').config({ path: dotenvPath });
+  const result = require('dotenv').config({ path: dotenvPath, override: true });
   if (result.error) {
     console.error('[DOTENV] Erro ao carregar .env:', result.error.message);
   }
@@ -243,6 +243,42 @@ async function runBackfillOnStart(processMessageFn, client) {
 
 client.on("ready", async () => {
     console.log("✅ Conectado.");
+    const WARMUP_INITIAL_DELAY = 5000;
+    const WARMUP_POLL_INTERVAL = 3000;
+    const WARMUP_MAX_POLLS = 10;
+    const WARMUP_STABLE_COUNT = 2;
+
+    console.log(`[READY] Aguardando ${WARMUP_INITIAL_DELAY / 1000}s para WhatsApp Web estabilizar...`);
+    await new Promise(r => setTimeout(r, WARMUP_INITIAL_DELAY));
+
+    let prevCount = -1;
+    let stableHits = 0;
+    for (let i = 0; i < WARMUP_MAX_POLLS; i++) {
+        try {
+            const chats = await client.getChats();
+            const count = chats.length;
+            console.log(`[WARMUP] Poll ${i + 1}/${WARMUP_MAX_POLLS}: ${count} chats carregados`);
+            if (count === prevCount && count > 0) {
+                stableHits++;
+                if (stableHits >= WARMUP_STABLE_COUNT) {
+                    console.log(`[WARMUP] Chat count estabilizou em ${count}. Pronto.`);
+                    break;
+                }
+            } else {
+                stableHits = 0;
+            }
+            prevCount = count;
+        } catch (e) {
+            console.log(`[WARMUP] Poll ${i + 1} falhou: ${e.message}`);
+        }
+        if (i < WARMUP_MAX_POLLS - 1) {
+            await new Promise(r => setTimeout(r, WARMUP_POLL_INTERVAL));
+        }
+    }
+    if (stableHits < WARMUP_STABLE_COUNT) {
+        console.log(`[WARMUP] Chat count não estabilizou após ${WARMUP_MAX_POLLS} polls. Prosseguindo mesmo assim.`);
+    }
+
     try {
         loadIgnoreList();
         await syncMissedMessagesByCheckpoint(processMessage);

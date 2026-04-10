@@ -1,8 +1,8 @@
 const fs = require("fs-extra");
 const path = require("path");
 
-const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL;
+function getOllamaApiKey() { return process.env.OLLAMA_API_KEY; }
+function getOllamaModel() { return process.env.OLLAMA_MODEL || "gpt-oss:120b"; }
 
 const PRE_PATH = "G:/Franklin/Outros/Guias/PRÉ Resumo Whatsapp.md";
 const RESUMO_PATH = "G:/Franklin/Outros/Guias/Resumo WhatsApp.md";
@@ -43,7 +43,9 @@ function buildMessages(preContent, resumoContent) {
 }
 
 async function callOllama(messages) {
-    if (!OLLAMA_API_KEY) {
+    const apiKey = getOllamaApiKey();
+    const model = getOllamaModel();
+    if (!apiKey) {
         throw new Error("OLLAMA_API_KEY não configurada no .env");
     }
 
@@ -51,13 +53,13 @@ async function callOllama(messages) {
     const ollama = new Ollama({
         host: "https://ollama.com",
         headers: {
-            Authorization: `Bearer ${OLLAMA_API_KEY}`,
+            Authorization: `Bearer ${apiKey}`,
         },
     });
 
-    console.log(`[LLM RESUMO] Chamando Ollama Cloud (${OLLAMA_MODEL})...`);
+    console.log(`[LLM RESUMO] Chamando Ollama Cloud (${model})...`);
     const response = await ollama.chat({
-        model: OLLAMA_MODEL,
+        model,
         messages,
         stream: false,
     });
