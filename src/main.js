@@ -16,6 +16,7 @@ patchConsole();
 const { client, setShuttingDown } = require("./lib/whatsappClient");
 const { checkpoint } = require("./services/dedupeService");
 const { syncMissedMessagesByCheckpoint } = require("./services/syncService");
+const { startCheckpointRecovery } = require("./services/checkpointRecoveryService");
 const { startWatching } = require("./services/headerWatcherService");
 const { startWatching: startLlmResumoWatching } = require("./services/llmResumoWatcherService");
 const { parseCommand } = require("./utils/parse");
@@ -28,6 +29,8 @@ const groupIgnoreList = [
     "Boa Viagem",
     "Monitoramento_quadra"
 ];
+
+let stopCheckpointRecovery = () => {};
 
 function loadIgnoreList() {
     const labels = data.labels?.groups || {};
@@ -403,6 +406,8 @@ client.on("ready", async () => {
     } catch (e) {
         console.error("[READY] Erro outbound server (não bloqueia app):", e.message);
     }
+    stopCheckpointRecovery();
+    stopCheckpointRecovery = startCheckpointRecovery(() => syncMissedMessagesByCheckpoint(processMessage));
     console.log("[READY] Todos os serviços iniciados!");
 });
 
@@ -440,6 +445,7 @@ client.on("message_revoke_everyone", async (msg) => {
 async function shutdown(signal) {
     console.log(`\n🛑 ${signal} recebido. Desligando gracefully...`);
     setShuttingDown(true);
+    stopCheckpointRecovery();
     try {
         await stopOutboundServer();
     } catch (e) {
