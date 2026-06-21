@@ -34,7 +34,7 @@ function isClientReady(client) {
 }
 
 function getPrePath() {
-    return "G:/Franklin/Outros/Guias/PRÉ Resumo Whatsapp.md";
+    return "G:/Franklin/99_Sistema/_ia/PRÉ Resumo Whatsapp.md";
 }
 
 async function processPreFile() {

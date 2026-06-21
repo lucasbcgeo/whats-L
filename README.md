@@ -242,6 +242,88 @@ pm2 logs whats-L
 
 ---
 
+## Outbound API
+
+The bot exposes a tiny HTTP bridge on `127.0.0.1` so external tools (skills, scripts, agents) can send messages through the already-authenticated WhatsApp session. No external network exposure — localhost only + token auth.
+
+### Configuration
+
+Add to `.env`:
+
+```env
+WHATS_OUTBOUND_PORT=5454
+WHATS_OUTBOUND_TOKEN=<random hex, generate with: node -e "console.log(require('crypto').randomBytes(24).toString('hex'))">
+```
+
+The bridge starts automatically on the `ready` event (after WhatsApp warmup) and shuts down on SIGINT/SIGTERM. Look for `[OUTBOUND] bridge escutando em http://127.0.0.1:<port>` in the logs.
+
+### Endpoints
+
+All responses are JSON. Requests (except `/health`) require header `X-Whats-Token: <WHATS_OUTBOUND_TOKEN>`.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| `GET` | `/health` | — | `{ok:true, service:"whats-L-outbound"}` |
+| `POST` | `/send` | `{to, text}` **or** `{to, file, caption?}` | `{ok:true, messageId, to, name, kind, ...}` |
+| `GET` | `/groups` | — | `{ok:true, count, groups:[{id,name}]}` |
+| `GET` | `/chats` | — | `{ok:true, count, chats:[{id,name,isGroup,timestamp}]}` |
+
+### `/send` body
+
+Two modes (mutually exclusive):
+
+**Text:**
+```json
+{ "to": "5511999999999", "text": "Olá" }
+```
+
+**File (path on local filesystem — bot reads it directly):**
+```json
+{ "to": "5511999999999", "file": { "path": "C:\\Docs\\rel.pdf" }, "caption": "Relatório" }
+```
+
+**File (inline base64):**
+```json
+{ "to": "5511999999999", "file": { "data": "<base64>", "mimetype": "image/jpeg", "filename": "foto.jpg" }, "caption": "..." }
+```
+
+Limits:
+- `text`: 65KB
+- `file` (path): 50MB max, MIME inferred from extension or checked against allowlist (image/audio/video/pdf/text/Office/zip)
+- Inline JSON body: 25MB max
+
+### `to` resolution
+
+The bridge resolves the `to` field in this order:
+1. Raw chatId (`<number>@c.us`, `<number>@g.us`, `...@lid`) — direct lookup.
+2. Plain digits — normalized to `<digits>@c.us` and looked up.
+3. Non-numeric string — matched against `client.getChats()` by name (exact, then includes; case-insensitive). First match wins.
+
+### Errors
+
+| Status | Error | Cause |
+|---|---|---|
+| 401 | `unauthorized` | Missing/invalid `X-Whats-Token` |
+| 400 | `missing_to` / `missing_text_or_file` / `invalid_json` / `invalid_body` / `invalid_file_spec` / `not_a_file` | Bad request |
+| 404 | `chat_not_found` / `file_not_found` | `to` didn't resolve, or `--file` path missing |
+| 413 | `text_too_long` / `file_too_large` / `payload_too_large` | Exceeded size limits |
+| 415 | `unsupported_media_type` | MIME not in allowlist |
+| 502 | `send_failed` | WhatsApp rejected the send |
+
+### Companion skill
+
+The `whats-s` skill in `G:\Lucas\.agents\skills\whats-s\` and `G:\Franklin\.agents\skills\whats-s\` wraps this API in a Node CLI:
+
+```powershell
+node ".agents/skills/whats-s/scripts/whats-send.mjs" send --to "5511999999999" --text "Olá"
+node ".agents/skills/whats-s/scripts/whats-send.mjs" send --to "5511999999999" --file "C:\Docs\rel.pdf" --caption "Relatório"
+node ".agents/skills/whats-s/scripts/whats-send.mjs" groups
+```
+
+> ⚠️ Same ban warning as above: this API is for personal use. Mass messaging may result in a WhatsApp ban.
+
+---
+
 ## License
 
 MIT

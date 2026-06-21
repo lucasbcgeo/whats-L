@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "header_watcher_state.json");
-const RESUMO_PATH = "G:/Franklin/Outros/Guias/Resumo WhatsApp.md";
+const RESUMO_PATH = "G:/Franklin/99_Sistema/_ia/Resumo Whatsapp.md";
 
 let cachedGroupId = null;
 let cachedGroupName = null;
@@ -60,7 +60,7 @@ function parseMarkdown(filePath) {
         const title = lines[0].trim().replace(/"/g, "").trim();
         const bodyRaw = lines.slice(1).join("\n");
         const body = stripComments(bodyRaw).replace(/\n---\s*$/, "").trim();
-        if (body) results.push({ title, body });
+        if (title) results.push({ title, body });
     }
     return results;
 }
@@ -126,7 +126,15 @@ async function syncFranklinHeaders(client) {
         for (const { title, body } of headers) {
             const normKey = normalizeTitle(title);
             const stateValue = state[title] || state[normKey] || state[Object.keys(state).find(k => normalizeTitle(k) === normKey)];
-            if (body === stateValue) continue;
+            
+            const normalizeForCompare = (text) => (text || "").replace(/\s+/g, " ").trim();
+            if (normalizeForCompare(body) === normalizeForCompare(stateValue)) continue;
+
+            if (!body) {
+                state[title] = body;
+                continue;
+            }
+            
             const titleParts = title.split(/\s+/);
             const whatsappTitle = titleParts.length > 1
                 ? `${titleParts[0]} *${titleParts.slice(1).join(" ")}*`

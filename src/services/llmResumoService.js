@@ -4,8 +4,8 @@ const path = require("path");
 function getOllamaApiKey() { return process.env.OLLAMA_API_KEY; }
 function getOllamaModel() { return process.env.OLLAMA_MODEL || "gpt-oss:120b"; }
 
-const PRE_PATH = "G:/Franklin/Outros/Guias/PRÉ Resumo Whatsapp.md";
-const RESUMO_PATH = "G:/Franklin/Outros/Guias/Resumo WhatsApp.md";
+const PRE_PATH = "G:/Franklin/99_Sistema/_ia/PRÉ Resumo Whatsapp.md";
+const RESUMO_PATH = "G:/Franklin/99_Sistema/_ia/Resumo Whatsapp.md";
 const MAX_PRE_LINES = 20;
 
 const SYSTEM_PROMPT = `Você é um assistente que atualiza um resumo de WhatsApp para uso familiar.

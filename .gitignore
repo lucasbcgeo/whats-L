@@ -51,6 +51,7 @@ docs/
 
 # Python venv
 venv/
+models/
 
 # Tools (FFmpeg, etc)
 tools/

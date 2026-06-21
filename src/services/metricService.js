@@ -64,7 +64,7 @@ const METRIC_TYPES = {
     procrastination: "scale",
     leisure:        "boolean",
     reading:        "boolean",
-    games:          "duration",
+    games_dur:      "duration",
     screenTime:     "duration",
     food:           "food",
     sleep_bed:      "sleep_dormi",
@@ -104,7 +104,7 @@ async function saveMetric({ metric, value, timestamp, dateStr, rawArgs, options 
             return await upsert({
                 dateStr: ds, key,
                 mutator: (cur) => {
-                    if (cur !== undefined && cur !== null && !options.force) return cur;
+                    if (cur === true && !options.force) return cur;
                     return v;
                 },
                 undo: { type: "scalar" },

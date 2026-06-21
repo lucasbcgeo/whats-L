@@ -2,8 +2,8 @@ require('dotenv').config({ override: true });
 
 const fs = require("fs-extra");
 
-const PRE_PATH = "G:/Franklin/Outros/Guias/PRÉ Resumo Whatsapp teste.md";
-const RESUMO_PATH = "G:/Franklin/Outros/Guias/Resumo WhatsApp teste.md";
+const PRE_PATH = "G:/Franklin/99_Sistema/Guias/PRÉ Resumo Whatsapp teste.md";
+const RESUMO_PATH = "G:/Franklin/99_Sistema/_ia/Resumo Whatsapp.md teste.md";
 
 const SYSTEM_PROMPT = `Você é um assistente que atualiza um resumo de WhatsApp para uso familiar.
 

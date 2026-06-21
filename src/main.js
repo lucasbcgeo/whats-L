@@ -22,6 +22,7 @@ const { parseCommand } = require("./utils/parse");
 const { isProcessed, markProcessed } = require("./core/dedupe");
 const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
 const { resolveProfile, isGroupAllowed, data } = require("./config");
+const { startServer: startOutboundServer, stopServer: stopOutboundServer } = require("./services/outboundServer");
 
 const groupIgnoreList = [
     "Boa Viagem",
@@ -241,43 +242,137 @@ async function runBackfillOnStart(processMessageFn, client) {
     }
 }
 
-client.on("ready", async () => {
-    console.log("✅ Conectado.");
+function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
+
+function getErrorMessage(e) {
+    return e?.message || String(e);
+}
+
+function isTransientBrowserError(e) {
+    const msg = getErrorMessage(e);
+    return [
+        "Target closed",
+        "detached Frame",
+        "Frame was detached",
+        "Session expired",
+        "Execution context was destroyed",
+        "Cannot find context with specified id",
+        "Protocol error (Runtime.callFunctionOn)",
+    ].some(pattern => msg.includes(pattern));
+}
+
+function describeTransientBrowserError(e) {
+    const msg = getErrorMessage(e);
+    if (msg.includes("detached Frame") || msg.includes("Frame was detached")) return "frame reiniciado";
+    if (msg.includes("Target closed")) return "target fechado";
+    if (msg.includes("Session expired")) return "sessão expirada";
+    if (msg.includes("Execution context was destroyed")) return "contexto reiniciado";
+    if (msg.includes("Protocol error (Runtime.callFunctionOn)")) return "runtime indisponível";
+    return "navegador reiniciando";
+}
+
+function isClientPageOpen(client) {
+    try {
+        return Boolean(client?.pupPage && !client.pupPage.isClosed());
+    } catch {
+        return false;
+    }
+}
+
+async function getClientStateSafe(client) {
+    try {
+        return await client.getState();
+    } catch (e) {
+        if (isTransientBrowserError(e)) return null;
+        throw e;
+    }
+}
+
+async function waitForWhatsAppWarmup(client) {
     const WARMUP_INITIAL_DELAY = 5000;
     const WARMUP_POLL_INTERVAL = 3000;
     const WARMUP_MAX_POLLS = 10;
     const WARMUP_STABLE_COUNT = 2;
 
     console.log(`[READY] Aguardando ${WARMUP_INITIAL_DELAY / 1000}s para WhatsApp Web estabilizar...`);
-    await new Promise(r => setTimeout(r, WARMUP_INITIAL_DELAY));
+    await sleep(WARMUP_INITIAL_DELAY);
 
     let prevCount = -1;
     let stableHits = 0;
+    let successfulPolls = 0;
+
+    const resetStability = () => {
+        prevCount = -1;
+        stableHits = 0;
+    };
+
     for (let i = 0; i < WARMUP_MAX_POLLS; i++) {
         try {
+            if (!isClientPageOpen(client)) {
+                resetStability();
+                console.log(`[WARMUP] Poll ${i + 1}/${WARMUP_MAX_POLLS}: página do WhatsApp ainda indisponível`);
+                if (i < WARMUP_MAX_POLLS - 1) await sleep(WARMUP_POLL_INTERVAL);
+                continue;
+            }
+
+            const state = await getClientStateSafe(client);
+            if (state === null) {
+                resetStability();
+                console.log(`[WARMUP] Poll ${i + 1}/${WARMUP_MAX_POLLS}: estado ainda indisponível; aguardando`);
+                if (i < WARMUP_MAX_POLLS - 1) await sleep(WARMUP_POLL_INTERVAL);
+                continue;
+            }
+            if (state && state !== "CONNECTED") {
+                resetStability();
+                console.log(`[WARMUP] Poll ${i + 1}/${WARMUP_MAX_POLLS}: estado=${state}; aguardando conexão`);
+                if (i < WARMUP_MAX_POLLS - 1) await sleep(WARMUP_POLL_INTERVAL);
+                continue;
+            }
+
             const chats = await client.getChats();
             const count = chats.length;
+            successfulPolls++;
             console.log(`[WARMUP] Poll ${i + 1}/${WARMUP_MAX_POLLS}: ${count} chats carregados`);
             if (count === prevCount && count > 0) {
                 stableHits++;
                 if (stableHits >= WARMUP_STABLE_COUNT) {
                     console.log(`[WARMUP] Chat count estabilizou em ${count}. Pronto.`);
-                    break;
+                    return true;
                 }
             } else {
                 stableHits = 0;
             }
             prevCount = count;
         } catch (e) {
-            console.log(`[WARMUP] Poll ${i + 1} falhou: ${e.message}`);
+            resetStability();
+            if (isTransientBrowserError(e)) {
+                console.log(`[WARMUP] Poll ${i + 1}/${WARMUP_MAX_POLLS}: navegador ainda instável (${describeTransientBrowserError(e)}); tentando novamente`);
+            } else {
+                console.log(`[WARMUP] Poll ${i + 1}/${WARMUP_MAX_POLLS} falhou: ${getErrorMessage(e)}`);
+            }
         }
         if (i < WARMUP_MAX_POLLS - 1) {
-            await new Promise(r => setTimeout(r, WARMUP_POLL_INTERVAL));
+            await sleep(WARMUP_POLL_INTERVAL);
         }
     }
+
+    if (successfulPolls === 0) {
+        console.log("[WARMUP] Nenhum poll conseguiu ler chats. Aguardando próxima reconexão antes de iniciar serviços.");
+        return false;
+    }
+
     if (stableHits < WARMUP_STABLE_COUNT) {
         console.log(`[WARMUP] Chat count não estabilizou após ${WARMUP_MAX_POLLS} polls. Prosseguindo mesmo assim.`);
     }
+    return true;
+}
+
+client.on("ready", async () => {
+    console.log("✅ Conectado.");
+    const warmupOk = await waitForWhatsAppWarmup(client);
+    if (!warmupOk) return;
 
     try {
         loadIgnoreList();
@@ -301,6 +396,12 @@ client.on("ready", async () => {
         console.log("[READY] LLM Resumo watcher iniciado");
     } catch (e) {
         console.error("[READY] Erro LLM Resumo (não bloqueia app):", e.message);
+    }
+    try {
+        startOutboundServer(client);
+        console.log("[READY] Outbound server iniciado");
+    } catch (e) {
+        console.error("[READY] Erro outbound server (não bloqueia app):", e.message);
     }
     console.log("[READY] Todos os serviços iniciados!");
 });
@@ -339,6 +440,11 @@ client.on("message_revoke_everyone", async (msg) => {
 async function shutdown(signal) {
     console.log(`\n🛑 ${signal} recebido. Desligando gracefully...`);
     setShuttingDown(true);
+    try {
+        await stopOutboundServer();
+    } catch (e) {
+        console.error("⚠️ Erro ao fechar outbound server:", e.message);
+    }
     try {
         await client.destroy();
         console.log("✅ Cliente WhatsApp destruído com sucesso. Sessão preservada.");

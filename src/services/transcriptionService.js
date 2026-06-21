@@ -2,15 +2,11 @@ const { exec } = require("child_process");
 const path = require("path");
 const fs = require("fs-extra");
 const os = require("os");
-const { WHISPER_MODEL, WHISPER_GPU_THRESHOLD_SECONDS, TRANSCRIPTION_ENGINE } = require("../config/env");
+const { TRANSCRIPTION_MODEL_PATH } = require("../config/env");
 
-const PYTHON = "C:/Users/Avell/miniconda3/Scripts/conda.exe";
-const PYTHON_ARGS = ["run", "-p", "G:/Projetos/whats-L/venv"];
+const PYTHON = "G:/Projetos/whats-L/venv/python.exe";
 const TRANSCRIBE_SCRIPT = path.join(__dirname, "..", "..", "scripts", "transcribe.py");
 const FFPROBE = "ffprobe";
-
-const GPU_THRESHOLD = parseInt(WHISPER_GPU_THRESHOLD_SECONDS) || 60;
-const ENGINE = TRANSCRIPTION_ENGINE || "parakeet";
 
 async function getAudioDuration(filePath) {
   return new Promise((resolve, reject) => {
@@ -28,17 +24,13 @@ async function getAudioDuration(filePath) {
 }
 
 async function transcribeAudio(audioPath) {
-  const modelName = WHISPER_MODEL || "medium";
+  const modelPath = path.resolve(TRANSCRIPTION_MODEL_PATH);
 
   const duration = await getAudioDuration(audioPath);
-  const useGpu = true; // Always use GPU for faster processing
-  
-  const deviceParam = useGpu ? "cuda" : "cpu";
-  const deviceLabel = useGpu ? "GPU" : "CPU";
 
   return new Promise((resolve, reject) => {
-    const cmd = `"${PYTHON}" ${PYTHON_ARGS.join(" ")} python "${TRANSCRIBE_SCRIPT}" "${audioPath}" ${modelName} ${deviceParam}`;
-    console.log(`[TRANSCRIPTION] ${deviceLabel} (${duration.toFixed(1)}s): ${modelName}`);
+    const cmd = `"${PYTHON}" "${TRANSCRIBE_SCRIPT}" "${audioPath}" "${modelPath}"`;
+    console.log(`[TRANSCRIPTION] Parakeet CPU (${duration.toFixed(1)}s): ${modelPath}`);
 
     const child = exec(cmd, {
       shell: true,
