@@ -206,7 +206,7 @@ function resolveProfile({ groupName, number }) {
         const hasNumberMatch = match.numbers || match.number || match.contacts;
         
         if (hasGroupMatch && hasNumberMatch) {
-            if (groupMatch || numberMatch) return profileName;
+            if (groupMatch && numberMatch) return profileName;
         } else if (hasGroupMatch) {
             if (groupMatch) return profileName;
         } else if (hasNumberMatch) {
@@ -214,6 +214,25 @@ function resolveProfile({ groupName, number }) {
         }
     }
     return null;
+}
+
+async function resolveMessageProfile({ groupName, number }, client) {
+    let resolvedNumber = number;
+    if (number?.endsWith("@lid") && client?.getContactLidAndPhone) {
+        try {
+            const [ids] = await client.getContactLidAndPhone(number);
+            resolvedNumber = ids?.pn || number;
+        } catch (e) {
+            console.error(`[PROFILE] Falha ao converter LID ${number}:`, e.message);
+        }
+    }
+    return resolveProfile({ groupName, number: resolvedNumber })
+        || resolveProfile({ groupName, number });
+}
+
+function getMessageSenderId(msg, isGroup) {
+    if (!isGroup || msg.fromMe) return msg.from;
+    return msg.author || msg.from;
 }
 
 function isHandlerAllowed(profileName, handlerName) {
@@ -375,6 +394,8 @@ module.exports = {
     getAllTriggers,
     getTriggerMapping,
     resolveProfile,
+    resolveMessageProfile,
+    getMessageSenderId,
     isHandlerAllowed,
     isGroupAllowed,
     isDestinationAllowed,

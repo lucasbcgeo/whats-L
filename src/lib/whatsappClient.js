@@ -8,6 +8,11 @@ const { data } = require("../config");
 let reconnectAttempts = 0;
 const MAX_RECONNECT = 10;
 let shuttingDown = false;
+let isReconnecting = false;
+
+let lastQrPrintTime = 0;
+let qrCount = 0;
+const QR_FULL_PRINT_INTERVAL_MS = 60000;
 
 const client = new Client({
   authStrategy: new LocalAuth({ 
@@ -15,21 +20,32 @@ const client = new Client({
     dataPath: path.join(__dirname, '..', '..', '.wwebjs_auth')
   }),
   puppeteer: {
-    headless: true,
+    headless: 'shell',
     executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
-      '--disable-extensions'
+      '--disable-extensions',
+      '--disable-external-intent-requests',
+      '--window-position=-32000,-32000'
     ]
   }
 });
 
 client.on("qr", (qr) => {
-  console.log("Escaneie o QR no WhatsApp:");
-  qrcode.generate(qr, { small: true });
+  qrCount++;
+  const now = Date.now();
+  if (qrCount === 1 || now - lastQrPrintTime >= QR_FULL_PRINT_INTERVAL_MS) {
+    console.log("\nEscaneie o QR no WhatsApp:");
+    qrcode.generate(qr, { small: true });
+    lastQrPrintTime = now;
+  } else {
+    const elapsed = Math.floor((now - lastQrPrintTime) / 1000);
+    const nextFullIn = Math.ceil((QR_FULL_PRINT_INTERVAL_MS - (now - lastQrPrintTime)) / 1000);
+    console.log(`[QR] Atualizado há ${elapsed}s. Aguardando scan... (próximo QR completo em ${nextFullIn}s)`);
+  }
 });
 
 client.on("auth_failure", (msg) => {
@@ -47,14 +63,19 @@ client.on("remote_session_saved", () => {
 
 client.on("ready", () => {
   reconnectAttempts = 0;
+  qrCount = 0;
+  lastQrPrintTime = 0;
+  isReconnecting = false;
   console.log("[WHATSAPP] Cliente pronto.");
 });
 
 function scheduleReconnect() {
+  if (shuttingDown || isReconnecting) return;
   if (reconnectAttempts >= MAX_RECONNECT) {
     console.error("[WHATSAPP] Máximo de reconexões atingido. Reinicie o processo.");
     return;
   }
+  isReconnecting = true;
   reconnectAttempts++;
   const delay = Math.min(5000 * reconnectAttempts, 60000);
   console.log(`[WHATSAPP] Reconectando em ${delay / 1000}s (${reconnectAttempts}/${MAX_RECONNECT})...`);
@@ -66,6 +87,7 @@ function scheduleReconnect() {
       await client.initialize();
     } catch (e) {
       console.error("[WHATSAPP] Falha ao reconectar:", e.message);
+      isReconnecting = false;
       scheduleReconnect();
     }
   }, delay);
@@ -189,5 +211,6 @@ module.exports = {
   getTargetGroup,
   getTargetChats,
   fetchChatMessages,
+  scheduleReconnect,
   setShuttingDown: (v) => { shuttingDown = v; },
 };

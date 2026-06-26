@@ -22,7 +22,7 @@ const { startWatching: startLlmResumoWatching } = require("./services/llmResumoW
 const { parseCommand } = require("./utils/parse");
 const { isProcessed, markProcessed } = require("./core/dedupe");
 const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
-const { resolveProfile, isGroupAllowed, data } = require("./config");
+const { resolveMessageProfile, getMessageSenderId, isGroupAllowed, data } = require("./config");
 const { startServer: startOutboundServer, stopServer: stopOutboundServer } = require("./services/outboundServer");
 
 const groupIgnoreList = [
@@ -151,10 +151,10 @@ async function processMessage(msg, { silent, force } = { silent: false, force: f
         if (!force && isProcessed(msg)) return false;
 
         const chat = await msg.getChat();
-        const profile = resolveProfile({
+        const profile = await resolveMessageProfile({
             groupName: chat.isGroup ? chat.name : null,
-            number: !chat.isGroup ? msg.from : null,
-        });
+            number: getMessageSenderId(msg, chat.isGroup),
+        }, client);
 
         console.log("[DEBUG] msg.from:", msg.from);
         console.log("[DEBUG] chat.isGroup:", chat.isGroup);
