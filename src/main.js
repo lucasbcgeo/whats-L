@@ -189,6 +189,13 @@ async function processMessage(msg, { silent, force } = { silent: false, force: f
             const matchResult = h.match({ msg, parsed, chat, profile });
             console.log("[DEBUG] checking handler:", name, "- match:", matchResult);
             if (matchResult) {
+                if (silent && h.replaySafe === false) {
+                    console.log("[SYNC] Handler não seguro para replay, marcando sem executar:", name);
+                    markProcessed(msg);
+                    checkpoint.setLastTs(msg.timestamp);
+                    return true;
+                }
+
                 if (!silent) console.log("[HANDLER EXEC]", name);
                 const result = await h.handle({ msg, parsed, chat, profile });
 
@@ -204,9 +211,10 @@ async function processMessage(msg, { silent, force } = { silent: false, force: f
                     }
                 }
 
+                markProcessed(msg);
+                checkpoint.setLastTs(msg.timestamp);
+
                 if (!silent) {
-                    markProcessed(msg);
-                    checkpoint.setLastTs(msg.timestamp);
                     console.log("[DONE] mensagem processada");
                 }
                 return true;

@@ -482,6 +482,8 @@ async function searchAndSend(client, msg, chat, arquivo, destino, fonte, profile
 }
 
 module.exports = {
+    replaySafe: false,
+
     match({ msg, parsed, chat }) {
         if (!chat?.isGroup) return false;
 
