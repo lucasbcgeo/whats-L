@@ -102,8 +102,115 @@ function isSelectionBody(body) {
     return parseSelection(body).length > 0;
 }
 
+let testClient = null;
+let testContactsPath = null;
+let testAllowedPath = null;
+
+function _setClientForTest(c) { testClient = c; }
+function _setCachePathsForTest(full, allowed) {
+    testContactsPath = full;
+    testAllowedPath = allowed;
+}
+function _resetForTest() {
+    testClient = null;
+    testContactsPath = null;
+    testAllowedPath = null;
+    pendingSelections.clear();
+}
+
+function getClient() {
+    if (testClient) return testClient;
+    const { client } = require("../lib/whatsappClient");
+    return client;
+}
+
+function getPaths() {
+    if (testContactsPath && testAllowedPath) {
+        return { full: testContactsPath, allowed: testAllowedPath };
+    }
+    return { full: CONTACTS_FILE, allowed: CONTACTS_ALLOWED_FILE };
+}
+
+async function sendDM(senderId, text) {
+    const client = getClient();
+    const chat = await client.getChatById(senderId);
+    await chat.sendMessage(text);
+    console.log(`[AGENDA] DM enviada para ${senderId}`);
+}
+
+function formatContact(c) {
+    return `${c.name}: ${c.numbers.join(", ")}`;
+}
+
 async function handle({ msg, parsed, chat }) {
-    return;
+    const body = (msg.body || "").trim();
+    const isGroup = !!chat?.isGroup;
+    const senderId = getMessageSenderId(msg, isGroup);
+    const paths = getPaths();
+
+    const pending = pendingSelections.get(senderId);
+    if (pending && isSelectionBody(body)) {
+        const indices = parseSelection(body);
+        const valid = indices.filter(i => i >= 0 && i < pending.options.length);
+        if (valid.length === 0) {
+            await sendDM(senderId, "Número inválido. Envie novamente.");
+            return;
+        }
+        if (valid.length > 1) {
+            await sendDM(senderId, "Envie apenas um número.");
+            return;
+        }
+        const chosen = pending.options[valid[0]];
+        pendingSelections.delete(senderId);
+        await sendDM(senderId, formatContact(chosen));
+        return;
+    }
+
+    const termo = (parsed?.args || []).join(" ").trim();
+    if (!termo) {
+        await sendDM(senderId, "Uso: #agenda <nome do contato>");
+        return;
+    }
+
+    const scope = selectScope({ isGroup, groupName: isGroup ? chat.name : null, senderId });
+    if (!scope) {
+        console.log(`[AGENDA] sem escopo para sender=${senderId} group=${chat?.name}`);
+        return;
+    }
+
+    const cachePath = scope === "full" ? paths.full : paths.allowed;
+    await cacheService.ensureCache({ filePath: cachePath, client: getClient() });
+
+    let results = cacheService.findByTerm({ filePath: cachePath, term: termo });
+
+    if (results.length === 0) {
+        console.log(`[AGENDA] "${termo}" não encontrado, tentando resync`);
+        try {
+            await cacheService.resync({ filePath: cachePath, client: getClient() });
+            results = cacheService.findByTerm({ filePath: cachePath, term: termo });
+        } catch (e) {
+            console.error("[AGENDA] erro no resync:", e.message);
+        }
+    }
+
+    if (results.length === 0) {
+        await sendDM(senderId, `Contato "*${termo}*" não encontrado.`);
+        return;
+    }
+
+    if (results.length === 1) {
+        await sendDM(senderId, formatContact(results[0]));
+        return;
+    }
+
+    const list = results.map((r, i) => `${i + 1}. ${r.name} — ${r.numbers.join(", ")}`).join("\n");
+    const text = `Encontrei ${results.length} contatos:\n${list}\n\nResponda com o número.`;
+    await sendDM(senderId, text);
+    pendingSelections.set(senderId, {
+        type: "contact",
+        options: results,
+        ts: Date.now(),
+    });
 }
 
 function match({ msg, parsed, chat }) {
@@ -131,4 +238,7 @@ module.exports = {
     selectScope,
     parseSelection,
     isSelectionBody,
+    _setClientForTest,
+    _setCachePathsForTest,
+    _resetForTest,
 };
