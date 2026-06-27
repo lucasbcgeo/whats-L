@@ -131,29 +131,37 @@ function getPaths() {
     return { full: CONTACTS_FILE, allowed: CONTACTS_ALLOWED_FILE };
 }
 
-async function sendDM(senderId, text) {
+function getTargetId({ msg, chat, senderId }) {
+    return chat?.isGroup ? (chat.id?._serialized || msg.from) : senderId;
+}
+
+function getPendingKey({ msg, chat, senderId }) {
+    return chat?.isGroup ? `${chat.id?._serialized || msg.from}:${senderId}` : senderId;
+}
+
+async function sendDM(targetId, text) {
     const client = getClient();
-    const chat = await client.getChatById(senderId);
+    const chat = await client.getChatById(targetId);
     await chat.sendMessage(text);
-    console.log(`[AGENDA] DM enviada para ${senderId}`);
+    console.log(`[AGENDA] mensagem enviada para ${targetId}`);
 }
 
-async function sendContactDM(senderId, contact) {
-    await sendContactsDM(senderId, [contact]);
+async function sendContactDM(targetId, contact) {
+    await sendContactsDM(targetId, [contact]);
 }
 
-async function sendContactsDM(senderId, contacts) {
+async function sendContactsDM(targetId, contacts) {
     const client = getClient();
     try {
         const whatsappContacts = [];
         for (const contact of contacts) {
             whatsappContacts.push(await client.getContactById(contact.numbers[0]));
         }
-        await client.sendMessage(senderId, whatsappContacts.length === 1 ? whatsappContacts[0] : whatsappContacts);
-        console.log(`[AGENDA] ${whatsappContacts.length} contato(s) enviados para ${senderId}`);
+        await client.sendMessage(targetId, whatsappContacts.length === 1 ? whatsappContacts[0] : whatsappContacts);
+        console.log(`[AGENDA] ${whatsappContacts.length} contato(s) enviados para ${targetId}`);
     } catch (e) {
         console.error("[AGENDA] erro ao enviar contato, usando texto:", e.message);
-        await sendDM(senderId, contacts.map(formatContact).join("\n"));
+        await sendDM(targetId, contacts.map(formatContact).join("\n"));
     }
 }
 
@@ -165,25 +173,27 @@ async function handle({ msg, parsed, chat }) {
     const body = (msg.body || "").trim();
     const isGroup = !!chat?.isGroup;
     const senderId = getMessageSenderId(msg, isGroup);
+    const targetId = getTargetId({ msg, chat, senderId });
+    const pendingKey = getPendingKey({ msg, chat, senderId });
     const paths = getPaths();
 
-    const pending = pendingSelections.get(senderId);
+    const pending = pendingSelections.get(pendingKey);
     if (pending && isSelectionBody(body)) {
         const indices = parseSelection(body);
         const valid = indices.filter(i => i >= 0 && i < pending.options.length);
         if (valid.length === 0) {
-            await sendDM(senderId, "Número inválido. Envie novamente.");
+            await sendDM(targetId, "Número inválido. Envie novamente.");
             return;
         }
         const chosen = valid.map(i => pending.options[i]);
-        pendingSelections.delete(senderId);
-        await sendContactsDM(senderId, chosen);
+        pendingSelections.delete(pendingKey);
+        await sendContactsDM(targetId, chosen);
         return;
     }
 
     const termo = (parsed?.args || []).join(" ").trim();
     if (!termo) {
-        await sendDM(senderId, "Uso: #agenda <nome do contato>");
+        await sendDM(targetId, "Uso: #agenda <nome do contato>");
         return;
     }
 
@@ -211,19 +221,19 @@ async function handle({ msg, parsed, chat }) {
     }
 
     if (results.length === 0) {
-        await sendDM(senderId, `Contato "*${termo}*" não encontrado.`);
+        await sendDM(targetId, `Contato "*${termo}*" não encontrado.`);
         return;
     }
 
     if (results.length === 1) {
-        await sendContactDM(senderId, results[0]);
+        await sendContactDM(targetId, results[0]);
         return;
     }
 
     const list = results.map((r, i) => `${i + 1}. ${r.name}`).join("\n");
     const text = `Encontrei ${results.length} contatos:\n${list}\n\nResponda com o número. Ex: 1, 2 ou 1-3.`;
-    await sendDM(senderId, text);
-    pendingSelections.set(senderId, {
+    await sendDM(targetId, text);
+    pendingSelections.set(pendingKey, {
         type: "contact",
         options: results,
         ts: Date.now(),
@@ -236,7 +246,8 @@ function match({ msg, parsed, chat }) {
 
     const isGroup = !!chat?.isGroup;
     const senderId = getMessageSenderId(msg, isGroup);
-    const pending = pendingSelections.get(senderId);
+    const pendingKey = getPendingKey({ msg, chat, senderId });
+    const pending = pendingSelections.get(pendingKey);
     if (pending && isSelectionBody(body)) return true;
 
     if (!parsed) return false;

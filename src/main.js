@@ -162,25 +162,23 @@ async function processMessage(msg, { silent, force } = { silent: false, force: f
 
         const parsed = parseCommand(msg.body);
 
-        if (parsed?.cmd === "agenda") {
-            try {
-                const agendaHandler = require("./handlers/agenda");
-                if (agendaHandler.match({ msg, parsed, chat, profile })) {
-                    if (silent && agendaHandler.replaySafe === false) {
-                        console.log("[SYNC] Handler não seguro para replay, marcando sem executar: agenda");
-                        markProcessed(msg);
-                        checkpoint.setLastTs(msg.timestamp);
-                        return true;
-                    }
-
-                    await agendaHandler.handle({ msg, parsed, chat, profile });
+        try {
+            const agendaHandler = require("./handlers/agenda");
+            if (agendaHandler.match({ msg, parsed, chat, profile })) {
+                if (silent && agendaHandler.replaySafe === false) {
+                    console.log("[SYNC] Handler não seguro para replay, marcando sem executar: agenda");
                     markProcessed(msg);
                     checkpoint.setLastTs(msg.timestamp);
                     return true;
                 }
-            } catch (e) {
-                console.error("[AGENDA] erro no hook pre-profile:", e.message);
+
+                await agendaHandler.handle({ msg, parsed, chat, profile });
+                markProcessed(msg);
+                checkpoint.setLastTs(msg.timestamp);
+                return true;
             }
+        } catch (e) {
+            console.error("[AGENDA] erro no hook pre-profile:", e.message);
         }
 
         if (!chat.isGroup && !profile) return false;

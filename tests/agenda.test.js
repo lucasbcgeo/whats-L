@@ -123,7 +123,7 @@ function makeTempContactsFile() {
     return { dir, filePath, allowedPath };
 }
 
-test("handle envia um unico match por DM", async () => {
+test("handle envia um unico match no mesmo grupo", async () => {
     const env = makeTempContactsFile();
     const captured = [];
     const sentContacts = [];
@@ -152,7 +152,7 @@ test("handle envia um unico match por DM", async () => {
 
     assert.equal(captured.length, 0);
     assert.equal(sentContacts.length, 1);
-    assert.equal(sentContacts[0].id, "55999999999@c.us");
+    assert.equal(sentContacts[0].id, "chat@g.us");
     assert.equal(sentContacts[0].content, contact);
 
     agenda._resetForTest();
@@ -182,7 +182,7 @@ test("handle lista multiplos matches para escolha", async () => {
     assert.ok(captured[0].text.includes("João Silva"));
     assert.ok(captured[0].text.includes("João Pedro"));
     assert.ok(/Responda com o número/i.test(captured[0].text));
-    assert.equal(agenda.pendingSelections.get("556191615552@c.us").options.length, 2);
+    assert.equal(agenda.pendingSelections.get("chat@g.us:556191615552@c.us").options.length, 2);
 
     agenda._resetForTest();
     fs.rmSync(env.dir, { recursive: true, force: true });
@@ -213,7 +213,7 @@ test("handle sem termo envia help por DM", async () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 });
 
-test("selecao numerica entrega contatos por DM", async () => {
+test("selecao numerica entrega contatos no mesmo grupo", async () => {
     const env = makeTempContactsFile();
     const captured = [];
     const sentContacts = [];
@@ -234,7 +234,7 @@ test("selecao numerica entrega contatos por DM", async () => {
     agenda._setClientForTest(fakeClient);
     agenda._setCachePathsForTest(env.filePath, env.allowedPath);
 
-    agenda.pendingSelections.set("556191615552@c.us", {
+    agenda.pendingSelections.set("chat@g.us:556191615552@c.us", {
         type: "contact",
         options: [
             { name: "João Silva", numbers: ["5561999999999@c.us"] },
@@ -244,12 +244,14 @@ test("selecao numerica entrega contatos por DM", async () => {
     });
 
     captured.length = 0;
-    const selMsg = makeMsg({ body: "1-2", from: "556191615552@c.us" });
-    await agenda.handle({ msg: selMsg, parsed: null, chat: { isGroup: false, name: "Lucas" } });
+    const chat = makeChat({ isGroup: true, name: "Repete se tu for homi" });
+    const selMsg = makeMsg({ body: "1-2", from: "chat@g.us", author: "556191615552@c.us" });
+    assert.equal(agenda.match({ msg: selMsg, parsed: null, chat }), true);
+    await agenda.handle({ msg: selMsg, parsed: null, chat });
 
     assert.equal(captured.length, 0);
     assert.equal(sentContacts.length, 1);
-    assert.equal(sentContacts[0].id, "556191615552@c.us");
+    assert.equal(sentContacts[0].id, "chat@g.us");
     assert.deepEqual(sentContacts[0].content, [contactsById["5561999999999@c.us"], contactsById["5561888888888@c.us"]]);
 
     agenda._resetForTest();
