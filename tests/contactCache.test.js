@@ -93,6 +93,24 @@ test("ensureCache sincroniza do client quando arquivo vazio", async () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 });
 
+test("ensureCache inclui contatos com id lid", async () => {
+    const env = tempDir();
+    const fakeClient = {
+        getChats: async () => [
+            { isGroup: false, name: "Sarah Campos", id: { _serialized: "123456789@lid" } },
+        ],
+    };
+
+    await cacheService.ensureCache({ filePath: env.contactsPath, client: fakeClient });
+
+    const data = JSON.parse(fs.readFileSync(env.contactsPath, "utf8"));
+    assert.ok(data.sarah_campos, "deve ter criado chave sarah_campos");
+    assert.equal(data.sarah_campos.name, "Sarah Campos");
+    assert.deepEqual(data.sarah_campos.numbers, ["123456789@lid"]);
+
+    fs.rmSync(env.dir, { recursive: true, force: true });
+});
+
 test("resync throttle: duas chamadas em menos de 60s usam throttle", async () => {
     const env = tempDir();
     let calls = 0;

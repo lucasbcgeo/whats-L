@@ -3,6 +3,7 @@ const path = require("path");
 
 const THROTTLE_MS = 60 * 1000;
 const lastResyncByPath = new Map();
+const CONTACT_ID_SUFFIXES = ["@c.us", "@lid"];
 
 function normalize(str) {
     return (str || "")
@@ -73,7 +74,7 @@ async function resync({ filePath, client, force = false }) {
         const name = chat.name || chat.contact?.pushname;
         if (!name) continue;
         const number = chat.id?._serialized;
-        if (!number || !number.endsWith("@c.us")) continue;
+        if (!number || !CONTACT_ID_SUFFIXES.some(suffix => number.endsWith(suffix))) continue;
 
         const key = normalize(name);
         if (!data[key]) {
