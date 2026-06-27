@@ -179,11 +179,13 @@ async function handle({ msg, parsed, chat }) {
     }
 
     const cachePath = scope === "full" ? paths.full : paths.allowed;
-    await cacheService.ensureCache({ filePath: cachePath, client: getClient() });
+    if (scope === "full") {
+        await cacheService.ensureCache({ filePath: cachePath, client: getClient() });
+    }
 
     let results = cacheService.findByTerm({ filePath: cachePath, term: termo });
 
-    if (results.length === 0) {
+    if (scope === "full" && results.length === 0) {
         console.log(`[AGENDA] "${termo}" não encontrado, tentando resync`);
         try {
             await cacheService.resync({ filePath: cachePath, client: getClient() });

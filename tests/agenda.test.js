@@ -267,3 +267,35 @@ test("handle nao encontrado dispara resync uma vez", async () => {
     agenda._resetForTest();
     fs.rmSync(env.dir, { recursive: true, force: true });
 });
+
+test("handle allowed vazio nao sincroniza lista manual", async () => {
+    const env = makeTempContactsFile();
+    fs.writeFileSync(env.allowedPath, "{}", "utf8");
+
+    let getChatsCalls = 0;
+    const captured = [];
+    const fakeClient = {
+        getChats: async () => {
+            getChatsCalls++;
+            throw new Error("nao deveria sincronizar allowed");
+        },
+        getChatById: async (id) => ({
+            id: { _serialized: id },
+            sendMessage: async (text) => { captured.push({ id, text }); },
+        }),
+    };
+    agenda._setClientForTest(fakeClient);
+    agenda._setCachePathsForTest(env.filePath, env.allowedPath);
+
+    const chat = makeChat({ isGroup: true, name: "Filhos de Franklin - Geral" });
+    const msg = makeMsg({ body: "#agenda xico", from: "group@g.us", author: "55999999999@c.us" });
+    const parsed = parseAgenda("#agenda xico");
+    await agenda.handle({ msg, parsed, chat });
+
+    assert.equal(getChatsCalls, 0);
+    assert.equal(captured.length, 1);
+    assert.ok(/não encontrado/i.test(captured[0].text));
+
+    agenda._resetForTest();
+    fs.rmSync(env.dir, { recursive: true, force: true });
+});
