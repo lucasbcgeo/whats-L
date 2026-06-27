@@ -139,15 +139,21 @@ async function sendDM(senderId, text) {
 }
 
 async function sendContactDM(senderId, contact) {
+    await sendContactsDM(senderId, [contact]);
+}
+
+async function sendContactsDM(senderId, contacts) {
     const client = getClient();
-    const contactId = contact.numbers[0];
     try {
-        const whatsappContact = await client.getContactById(contactId);
-        await client.sendMessage(senderId, whatsappContact);
-        console.log(`[AGENDA] contato enviado para ${senderId}: ${contact.name}`);
+        const whatsappContacts = [];
+        for (const contact of contacts) {
+            whatsappContacts.push(await client.getContactById(contact.numbers[0]));
+        }
+        await client.sendMessage(senderId, whatsappContacts.length === 1 ? whatsappContacts[0] : whatsappContacts);
+        console.log(`[AGENDA] ${whatsappContacts.length} contato(s) enviados para ${senderId}`);
     } catch (e) {
         console.error("[AGENDA] erro ao enviar contato, usando texto:", e.message);
-        await sendDM(senderId, formatContact(contact));
+        await sendDM(senderId, contacts.map(formatContact).join("\n"));
     }
 }
 
@@ -169,13 +175,9 @@ async function handle({ msg, parsed, chat }) {
             await sendDM(senderId, "Número inválido. Envie novamente.");
             return;
         }
-        if (valid.length > 1) {
-            await sendDM(senderId, "Envie apenas um número.");
-            return;
-        }
-        const chosen = pending.options[valid[0]];
+        const chosen = valid.map(i => pending.options[i]);
         pendingSelections.delete(senderId);
-        await sendContactDM(senderId, chosen);
+        await sendContactsDM(senderId, chosen);
         return;
     }
 
@@ -218,8 +220,8 @@ async function handle({ msg, parsed, chat }) {
         return;
     }
 
-    const list = results.map((r, i) => `${i + 1}. ${r.name} — ${r.numbers.join(", ")}`).join("\n");
-    const text = `Encontrei ${results.length} contatos:\n${list}\n\nResponda com o número.`;
+    const list = results.map((r, i) => `${i + 1}. ${r.name}`).join("\n");
+    const text = `Encontrei ${results.length} contatos:\n${list}\n\nResponda com o número. Ex: 1, 2 ou 1-3.`;
     await sendDM(senderId, text);
     pendingSelections.set(senderId, {
         type: "contact",

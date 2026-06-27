@@ -159,7 +159,7 @@ test("handle envia um unico match por DM", async () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 });
 
-test("handle lista numerada quando multiplos match", async () => {
+test("handle lista multiplos matches para escolha", async () => {
     const env = makeTempContactsFile();
     const captured = [];
     const fakeClient = {
@@ -182,6 +182,7 @@ test("handle lista numerada quando multiplos match", async () => {
     assert.ok(captured[0].text.includes("João Silva"));
     assert.ok(captured[0].text.includes("João Pedro"));
     assert.ok(/Responda com o número/i.test(captured[0].text));
+    assert.equal(agenda.pendingSelections.get("556191615552@c.us").options.length, 2);
 
     agenda._resetForTest();
     fs.rmSync(env.dir, { recursive: true, force: true });
@@ -212,10 +213,19 @@ test("handle sem termo envia help por DM", async () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 });
 
-test("selecao numerica entrega contato por DM", async () => {
+test("selecao numerica entrega contatos por DM", async () => {
     const env = makeTempContactsFile();
     const captured = [];
+    const sentContacts = [];
+    const contactsById = {
+        "5561999999999@c.us": { id: { _serialized: "5561999999999@c.us" }, name: "João Silva" },
+        "5561888888888@c.us": { id: { _serialized: "5561888888888@c.us" }, name: "João Pedro" },
+    };
     const fakeClient = {
+        getContactById: async (id) => contactsById[id],
+        sendMessage: async (id, content) => {
+            sentContacts.push({ id, content });
+        },
         getChatById: async (id) => ({
             id: { _serialized: id },
             sendMessage: async (text) => { captured.push({ id, text }); },
@@ -224,18 +234,23 @@ test("selecao numerica entrega contato por DM", async () => {
     agenda._setClientForTest(fakeClient);
     agenda._setCachePathsForTest(env.filePath, env.allowedPath);
 
-    const chat = makeChat({ isGroup: true, name: "Repete se tu for homi" });
-    const msg1 = makeMsg({ body: "#agenda joao", from: "group@g.us", author: "556191615552@c.us" });
-    const parsed1 = parseAgenda("#agenda joao");
-    await agenda.handle({ msg: msg1, parsed: parsed1, chat });
+    agenda.pendingSelections.set("556191615552@c.us", {
+        type: "contact",
+        options: [
+            { name: "João Silva", numbers: ["5561999999999@c.us"] },
+            { name: "João Pedro", numbers: ["5561888888888@c.us"] },
+        ],
+        ts: Date.now(),
+    });
 
     captured.length = 0;
-    const selMsg = makeMsg({ body: "2", from: "556191615552@c.us" });
+    const selMsg = makeMsg({ body: "1-2", from: "556191615552@c.us" });
     await agenda.handle({ msg: selMsg, parsed: null, chat: { isGroup: false, name: "Lucas" } });
 
-    assert.equal(captured.length, 1);
-    assert.ok(captured[0].text.includes("João Pedro"));
-    assert.equal(captured[0].id, "556191615552@c.us");
+    assert.equal(captured.length, 0);
+    assert.equal(sentContacts.length, 1);
+    assert.equal(sentContacts[0].id, "556191615552@c.us");
+    assert.deepEqual(sentContacts[0].content, [contactsById["5561999999999@c.us"], contactsById["5561888888888@c.us"]]);
 
     agenda._resetForTest();
     fs.rmSync(env.dir, { recursive: true, force: true });
