@@ -111,6 +111,25 @@ test("ensureCache inclui contatos com id lid", async () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 });
 
+test("ensureCache nao duplica mesmo id com nomes diferentes", async () => {
+    const env = tempDir();
+    const fakeClient = {
+        getChats: async () => [
+            { isGroup: false, name: "Sarah Campos", id: { _serialized: "123456789@lid" } },
+            { isGroup: false, name: "Sarah Campos.", id: { _serialized: "123456789@lid" } },
+        ],
+    };
+
+    await cacheService.ensureCache({ filePath: env.contactsPath, client: fakeClient });
+
+    const data = JSON.parse(fs.readFileSync(env.contactsPath, "utf8"));
+    assert.equal(Object.keys(data).length, 1);
+    assert.ok(data.sarah_campos);
+    assert.deepEqual(data.sarah_campos.numbers, ["123456789@lid"]);
+
+    fs.rmSync(env.dir, { recursive: true, force: true });
+});
+
 test("resync throttle: duas chamadas em menos de 60s usam throttle", async () => {
     const env = tempDir();
     let calls = 0;

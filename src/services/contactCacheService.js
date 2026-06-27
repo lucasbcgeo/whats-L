@@ -69,12 +69,15 @@ async function resync({ filePath, client, force = false }) {
 
     const chats = await client.getChats();
     const data = {};
+    const seenNumbers = new Set();
     for (const chat of chats) {
         if (chat.isGroup) continue;
         const name = chat.name || chat.contact?.pushname;
         if (!name) continue;
         const number = chat.id?._serialized;
         if (!number || !CONTACT_ID_SUFFIXES.some(suffix => number.endsWith(suffix))) continue;
+        if (seenNumbers.has(number)) continue;
+        seenNumbers.add(number);
 
         const key = normalize(name);
         if (!data[key]) {
