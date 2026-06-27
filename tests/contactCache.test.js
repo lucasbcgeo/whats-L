@@ -41,6 +41,23 @@ test("findByTerm retorna vazio quando nenhum match", () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 });
 
+test("loadCache trata arquivo em branco como cache vazio", () => {
+    const env = tempDir();
+    fs.writeFileSync(env.contactsPath, "", "utf8");
+
+    const originalError = console.error;
+    let errorCalls = 0;
+    console.error = () => { errorCalls++; };
+
+    const result = cacheService.loadCache(env.contactsPath);
+
+    console.error = originalError;
+    assert.deepEqual(result, {});
+    assert.equal(errorCalls, 0);
+
+    fs.rmSync(env.dir, { recursive: true, force: true });
+});
+
 test("ensureCache nao reescreve se arquivo ja existe e tem conteudo", async () => {
     const env = tempDir();
     fs.writeFileSync(env.contactsPath, JSON.stringify({

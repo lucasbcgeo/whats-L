@@ -17,6 +17,7 @@ function loadCache(filePath) {
     try {
         if (!fs.existsSync(filePath)) return {};
         const raw = fs.readFileSync(filePath, "utf8");
+        if (!raw.trim()) return {};
         const parsed = JSON.parse(raw);
         return parsed && typeof parsed === "object" ? parsed : {};
     } catch (e) {
