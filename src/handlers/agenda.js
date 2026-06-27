@@ -110,17 +110,15 @@ function match({ msg, parsed, chat }) {
     cleanExpired();
     const body = (msg.body || "").trim();
 
-    const dmKey = msg.from;
-    const pending = pendingSelections.get(dmKey);
+    const isGroup = !!chat?.isGroup;
+    const senderId = getMessageSenderId(msg, isGroup);
+    const pending = pendingSelections.get(senderId);
     if (pending && isSelectionBody(body)) return true;
 
     if (!parsed) return false;
     if (getHandlerForTrigger(parsed.cmd) !== "agenda") return false;
 
-    const isGroup = !!chat?.isGroup;
     const groupName = isGroup ? chat.name : null;
-    const senderId = getMessageSenderId(msg, isGroup);
-
     const scope = selectScope({ isGroup, groupName, senderId });
     return scope !== null;
 }
