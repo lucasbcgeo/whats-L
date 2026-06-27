@@ -138,6 +138,19 @@ async function sendDM(senderId, text) {
     console.log(`[AGENDA] DM enviada para ${senderId}`);
 }
 
+async function sendContactDM(senderId, contact) {
+    const client = getClient();
+    const contactId = contact.numbers[0];
+    try {
+        const whatsappContact = await client.getContactById(contactId);
+        await client.sendMessage(senderId, whatsappContact);
+        console.log(`[AGENDA] contato enviado para ${senderId}: ${contact.name}`);
+    } catch (e) {
+        console.error("[AGENDA] erro ao enviar contato, usando texto:", e.message);
+        await sendDM(senderId, formatContact(contact));
+    }
+}
+
 function formatContact(c) {
     return `${c.name}: ${c.numbers.join(", ")}`;
 }
@@ -162,7 +175,7 @@ async function handle({ msg, parsed, chat }) {
         }
         const chosen = pending.options[valid[0]];
         pendingSelections.delete(senderId);
-        await sendDM(senderId, formatContact(chosen));
+        await sendContactDM(senderId, chosen);
         return;
     }
 
@@ -201,7 +214,7 @@ async function handle({ msg, parsed, chat }) {
     }
 
     if (results.length === 1) {
-        await sendDM(senderId, formatContact(results[0]));
+        await sendContactDM(senderId, results[0]);
         return;
     }
 

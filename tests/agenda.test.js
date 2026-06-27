@@ -126,7 +126,16 @@ function makeTempContactsFile() {
 test("handle envia um unico match por DM", async () => {
     const env = makeTempContactsFile();
     const captured = [];
+    const sentContacts = [];
+    const contact = { id: { _serialized: "5561777777777@c.us" }, name: "Maria Souza" };
     const fakeClient = {
+        getContactById: async (id) => {
+            assert.equal(id, "5561777777777@c.us");
+            return contact;
+        },
+        sendMessage: async (id, content) => {
+            sentContacts.push({ id, content });
+        },
         getChatById: async (id) => ({
             id: { _serialized: id },
             sendMessage: async (text) => { captured.push({ id, text }); },
@@ -141,10 +150,10 @@ test("handle envia um unico match por DM", async () => {
 
     await agenda.handle({ msg, parsed, chat });
 
-    assert.equal(captured.length, 1);
-    assert.ok(captured[0].text.includes("Maria Souza"));
-    assert.ok(captured[0].text.includes("5561777777777@c.us"));
-    assert.equal(captured[0].id, "55999999999@c.us");
+    assert.equal(captured.length, 0);
+    assert.equal(sentContacts.length, 1);
+    assert.equal(sentContacts[0].id, "55999999999@c.us");
+    assert.equal(sentContacts[0].content, contact);
 
     agenda._resetForTest();
     fs.rmSync(env.dir, { recursive: true, force: true });
