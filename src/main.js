@@ -160,6 +160,29 @@ async function processMessage(msg, { silent, force } = { silent: false, force: f
         console.log("[DEBUG] chat.isGroup:", chat.isGroup);
         console.log("[DEBUG] resolved profile:", profile);
 
+        const parsed = parseCommand(msg.body);
+
+        if (parsed?.cmd === "agenda") {
+            try {
+                const agendaHandler = require("./handlers/agenda");
+                if (agendaHandler.match({ msg, parsed, chat, profile })) {
+                    if (silent && agendaHandler.replaySafe === false) {
+                        console.log("[SYNC] Handler não seguro para replay, marcando sem executar: agenda");
+                        markProcessed(msg);
+                        checkpoint.setLastTs(msg.timestamp);
+                        return true;
+                    }
+
+                    await agendaHandler.handle({ msg, parsed, chat, profile });
+                    markProcessed(msg);
+                    checkpoint.setLastTs(msg.timestamp);
+                    return true;
+                }
+            } catch (e) {
+                console.error("[AGENDA] erro no hook pre-profile:", e.message);
+            }
+        }
+
         if (!chat.isGroup && !profile) return false;
 
         if (chat.isGroup && profile && !isGroupAllowed(profile, chat.name)) return false;
@@ -169,8 +192,6 @@ async function processMessage(msg, { silent, force } = { silent: false, force: f
         if (!silent && profileHandlers.length > 0) {
             console.log(`[PROFILE HANDLERS] ${profile}: ${profileHandlers.map(h => h.name).join(', ')}`);
         }
-
-        const parsed = parseCommand(msg.body);
 
         if (!silent) {
             console.log("\n===== PROCESSANDO MENSAGEM =====");
