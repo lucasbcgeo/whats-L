@@ -19,6 +19,7 @@ const { syncMissedMessagesByCheckpoint } = require("./services/syncService");
 const { startCheckpointRecovery } = require("./services/checkpointRecoveryService");
 const { startWatching } = require("./services/headerWatcherService");
 const { startWatching: startLlmResumoWatching } = require("./services/llmResumoWatcherService");
+const { startAppointmentAlerts } = require("./services/appointmentAlertService");
 const { parseCommand } = require("./utils/parse");
 const { isProcessed, markProcessed } = require("./core/dedupe");
 const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
@@ -426,6 +427,11 @@ client.on("ready", async () => {
         console.log("[READY] LLM Resumo watcher iniciado");
     } catch (e) {
         console.error("[READY] Erro LLM Resumo (não bloqueia app):", e.message);
+    }
+    try {
+        await startAppointmentAlerts(client);
+    } catch (e) {
+        console.error("[READY] Erro appointment alerts (não bloqueia app):", e.message);
     }
     try {
         startOutboundServer(client);
