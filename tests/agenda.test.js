@@ -213,6 +213,42 @@ test("handle sem termo envia help por DM", async () => {
     fs.rmSync(env.dir, { recursive: true, force: true });
 });
 
+test("handle --atualizar força resync do contacts.json", async () => {
+    const env = makeTempContactsFile();
+    const originalResync = cacheService.resync;
+    let resyncOpts = null;
+    cacheService.resync = async (opts) => {
+        resyncOpts = opts;
+        return {};
+    };
+
+    const captured = [];
+    const fakeClient = {
+        getChatById: async (id) => ({
+            id: { _serialized: id },
+            sendMessage: async (text) => { captured.push({ id, text }); },
+        }),
+    };
+    agenda._setClientForTest(fakeClient);
+    agenda._setCachePathsForTest(env.filePath, env.allowedPath);
+
+    const chat = makeChat({ isGroup: true, name: "Repete se tu for homi" });
+    const msg = makeMsg({ body: "#agenda --atualizar", from: "group@g.us", author: "556191615552@c.us" });
+    const parsed = parseAgenda("#agenda --atualizar");
+
+    await agenda.handle({ msg, parsed, chat });
+
+    assert.equal(resyncOpts.filePath, env.filePath);
+    assert.equal(resyncOpts.force, true);
+    assert.equal(captured.length, 1);
+    assert.equal(captured[0].id, "chat@g.us");
+    assert.ok(/Agenda atualizada/i.test(captured[0].text));
+
+    cacheService.resync = originalResync;
+    agenda._resetForTest();
+    fs.rmSync(env.dir, { recursive: true, force: true });
+});
+
 test("selecao numerica entrega contatos no mesmo grupo", async () => {
     const env = makeTempContactsFile();
     const captured = [];

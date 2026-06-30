@@ -102,6 +102,19 @@ function isSelectionBody(body) {
     return parseSelection(body).length > 0;
 }
 
+function parseArgs(args) {
+    let update = false;
+    const termParts = [];
+    for (const arg of args || []) {
+        if (normalize(arg) === "--atualizar") {
+            update = true;
+        } else {
+            termParts.push(arg);
+        }
+    }
+    return { update, termo: termParts.join(" ").trim() };
+}
+
 let testClient = null;
 let testContactsPath = null;
 let testAllowedPath = null;
@@ -191,19 +204,31 @@ async function handle({ msg, parsed, chat }) {
         return;
     }
 
-    const termo = (parsed?.args || []).join(" ").trim();
-    if (!termo) {
-        await sendDM(targetId, "Uso: #agenda <nome do contato>");
-        return;
-    }
-
     const scope = selectScope({ isGroup, groupName: isGroup ? chat.name : null, senderId });
     if (!scope) {
         console.log(`[AGENDA] sem escopo para sender=${senderId} group=${chat?.name}`);
         return;
     }
 
+    const { update, termo } = parseArgs(parsed?.args);
     const cachePath = scope === "full" ? paths.full : paths.allowed;
+    if (update) {
+        if (scope !== "full") {
+            await sendDM(targetId, "Sem permissão para atualizar a agenda completa.");
+            return;
+        }
+        await cacheService.resync({ filePath: paths.full, client: getClient(), force: true });
+        if (!termo) {
+            await sendDM(targetId, "Agenda atualizada.");
+            return;
+        }
+    }
+
+    if (!termo) {
+        await sendDM(targetId, "Uso: #agenda <nome do contato>");
+        return;
+    }
+
     if (scope === "full") {
         await cacheService.ensureCache({ filePath: cachePath, client: getClient() });
     }
@@ -266,6 +291,7 @@ module.exports = {
     selectScope,
     parseSelection,
     isSelectionBody,
+    parseArgs,
     _setClientForTest,
     _setCachePathsForTest,
     _resetForTest,
