@@ -1,0 +1,331 @@
+{
+  "_doc": " profiles: ordem não importa mais. resolveProfile coleta todos os matches e desempata por hasMedia: anexo → perfil com autoForward*, texto → perfil sem autoForward*. features autoForwardWHATS (encaminha p/ grupo) e autoForwardLOCAL (salva em disco) são independentes.",
+  "profiles": {
+    "admin": {
+      "match": { "groups": ["minime"] },
+      "features": ["packadmin"]
+    },
+    "claro": {
+      "match": { "contacts": ["claro"] },
+      "features": ["autoForwardWHATS"],
+      "allowedDestinations": ["whats_GPO_Banco_Fatima"]
+    },
+    "imobiliaria": {
+      "match": { "contacts": ["imobiliaria"] },
+      "features": ["autoForwardWHATS"],
+      "allowedDestinations": ["whats_GPO_Banco_Fatima"]
+    },
+    "sarah-lucas": {
+      "match": { "contacts": ["sarah", "lucas"], "groups": ["banco_fatima", "banco_franklin", "filhos_franklin"] },
+      "features": ["manualForward"],
+      "allowedDestinations": ["whats_GPO_Banco_Franklin", "whats_GPO_Banco_Fatima", "whats_GPO_FranklinHeaderSync", "self"],
+      "allowedSources": ["franklin", "fatima"]
+    },
+    "natacha": {
+      "match": { "contacts": ["natacha"], "groups": ["filhos_franklin"] },
+      "features": ["manualForward"],
+      "allowedDestinations": ["whats_GPO_Banco_Franklin", "whats_GPO_FranklinHeaderSync", "self"],
+      "allowedSources": ["franklin"]
+    },
+    "secretario_franklin": {
+      "match": { "file": "G:/Franklin/99_Sistema/_ia/Resumo WhatsApp.md" },
+      "features": ["headerWatch"],
+      "allowedDestinations": ["whats_GPO_FranklinHeaderSync"]
+    },
+    "assist_secretario_franklin-PRE-PROCESSAMENTO-texto": {
+      "match": {
+        "contacts": ["julio_leal", "defensoria_-_guara-ceub_-_1_grau", "defensoria_-_plano-ceub_-_2_grau"],
+        "groups": ["banco_franklin"]
+      },
+      "features": ["messageCapture"],
+      "allowedDestinations": ["local_franklin-PRE-PROCESSAMENTO"]
+    },
+    "assist_secretario_franklin-PRE-PROCESSAMENTO-anexo": {
+      "match": {
+        "contacts": ["lucas", "sarah", "natacha"],
+        "groups": ["banco_franklin"]
+      },
+      "features": ["autoForwardLOCAL"],
+      "allowedDestinations": ["local_Franklin_Entrada"]
+    },
+    "assist_secretario_franklin-PROCESSAMENTO": {
+      "match": { "file": "G:/Franklin/99_Sistema/_ia/PRÉ Resumo Whatsapp.md" },
+      "features": ["llmResumoAuto"],
+      "allowedDestinations": ["whats_GPO_FranklinHeaderSync"]
+    }
+  },
+  "features": {
+    "packadmin": {
+      "commands": ["dailyTasks", "mealLog", "sleepLog", "workoutLog", "screenLog", "gamingLog", "procrastLog", "readingLog", "freeTimeLog", "anxietyLog", "descriptionLog", "annotationLog", "manualForward", "audioProcessing", "undo", "llmResumo", "dailyDigest"]
+    },
+    "autoForwardWHATS": {
+      "commands": ["fileForwarderAutoWHATStoWHATS"]
+    },
+    "autoForwardLOCAL": {
+      "commands": ["fileForwarderAutoWHATStoLOCAL"]
+    },
+    "headerWatch": {
+      "service": "headerWatcherService"
+    },
+    "manualForward": {
+      "commands": ["manualForward", "audioProcessing"]
+    },
+    "messageCapture": {
+      "commands": ["messageLogger"]
+    },
+    "llmResumoAuto": {
+      "service": "llmResumoWatcherService"
+    }
+  },
+  "flags": {
+    "data": {
+      "description": "Sobrescrever a data da métrica",
+      "values": {
+        "hoje": "today",
+        "ontem": "yesterday",
+        "anteontem": "day_before_yesterday",
+        "amanha": "tomorrow",
+        "amanhã": "tomorrow"
+      },
+      "range": {
+        "value": "ate",
+        "description": "Buscar entre data inicial e data final",
+        "example": "-data:hoje até 15/05"
+      },
+      "dataref": {
+        "description": "Usar coluna data.referencia em vez de data",
+        "values": ["sim", "nao", "yes", "no", "true", "false"],
+        "default": "nao"
+      }
+    },
+    "force": {
+      "description": "Forçar sobrescrita de métricas existentes",
+      "values": ["force", "correcao", "correção"],
+      "default": false
+    },
+    "de": {
+      "aliases": ["fonte", "source"],
+      "description": "Fonte/origem do arquivo"
+    },
+    "para": {
+      "aliases": ["destino", "to", "destination"],
+      "description": "Destino do arquivo"
+    }
+  },
+  "labels": {
+    "contacts": {
+      "claro": {
+        "numbers": ["556199099705@c.us", "182364311425240@lid", "5511999910621@c.us"],
+        "label": "Claro",
+        "frequencyDays": 25
+      },
+      "imobiliaria": {
+        "numbers": ["556199099705@c.us"],
+        "label": "Imobiliária",
+        "frequencyDays": 80
+      },
+      "sarah": {
+        "numbers": ["556181689999@c.us"],
+        "label": "Sarah"
+      },
+      "lucas": {
+        "numbers": ["556191615552@c.us", "220572457906328@lid"],
+        "label": "Lucas Campos"
+      },
+      "natacha": {
+        "numbers": ["5527998600410@c.us"],
+        "label": "Natacha"
+      },
+      "julio_leal": {
+        "label": "Julio Leal",
+        "sublabels": {
+          "def_naj_forum": {
+            "numbers": ["556181500022@c.us"],
+            "label": "Def-NAJ-Forum_Julio_Leal"
+          },
+          "def_vio_dom_forum": {
+            "numbers": ["556193590069@c.us"],
+            "label": "Def-VIO-DOM_Forum_Julio_Leal"
+          },
+          "def_daniele_forum": {
+            "numbers": ["556183495791@c.us"],
+            "label": "Def-Daniele_Forum_Julio_Leal"
+          }
+        }
+      },
+      "defensoria_-_guara-ceub_-_1_grau": {
+        "numbers": ["556196090319@c.us"],
+        "label": "Def_ceub-NAJ-Forum_Desemb_Maria_Thereza"
+      },
+      "defensoria_-_plano-ceub_-_2_grau": {
+        "name": "Defensoria - Plano-CEUB - 2 Grau",
+        "label": [
+          "556196754157@c.us"
+        ]
+      }
+    },
+    "groups": {
+      "banco_fatima": {
+        "groupNames": ["Banco - Fátima"],
+        "label": "Banco Fátima"
+      },
+      "banco_franklin": {
+        "groupNames": ["Banco de Dados - Dr. Franklin"],
+        "label": "Banco Franklin"
+      },
+      "filhos_franklin": {
+        "groupNames": ["Filhos de Franklin - Geral"],
+        "label": "Filhos de Franklin - Geral"
+      },
+      "minime": {
+        "groupNames": ["Minime"],
+        "label": "Minime"
+      },
+      "boa_viagem": {
+        "groupNames": ["Vendas Boa Viagem"],
+        "label": "Boa Viagem",
+        "silence": "true"
+      },
+      "monitoramento_quadra": {  
+        "groupNames": ["RVP AN - 114/15/16; 314/15/16"],
+        "label": "Monitoramento_quadra",
+        "silence":"true"
+      }
+    }
+  },
+  "sources": {
+    "lucas": {
+      "triggers": ["lucas", "lucas doc"],
+      "db": "G:/Projetos/lucas-db/vault.db",
+      "attachments": "G:/Lucas/99_Sistema/Anexos"
+    },
+    "franklin": {
+      "triggers": ["franklin", "franklin doc"],
+      "db": "G:/Projetos/franklin-db/franklin.db",
+      "attachments": "G:/Franklin/99_Sistema/_data"
+    },
+    "fatima": {
+      "triggers": ["fatima", "fatima doc"]
+    }
+  },
+  "agenda": {
+    "adminGroupKey": "minime",
+    "adminSenders": ["556191615552@c.us", "220572457906328@lid"],
+    "allowedGroupKey": "filhos_franklin",
+    "dmAllowedSenders": ["556181689999@c.us", "5527998600410@c.us"]
+  },
+  "appointmentAlerts": {
+    "groupKey": "filhos_franklin",
+    "offsets": [15, 7, 3],
+    "statePath": "G:/Projetos/whats-L/data/header_watcher_state.json",
+    "markdownPath": "G:/Franklin/99_Sistema/_ia/PRÉ Resumo Whatsapp.md"
+  },
+  "destinations": {
+    "whats_GPO_Banco_Franklin": { "groupName": "Banco de Dados - Dr. Franklin" },
+    "whats_GPO_Banco_Fatima": { "groupName": "Banco - Fátima" },
+    "whats_GPO_FranklinHeaderSync": { "groupName": "Filhos de Franklin - Geral" },
+    "local_Franklin_Entrada": { "localPath": "G:/Franklin/00_Entrada" },
+    "local_franklin-PRE-PROCESSAMENTO": { "localPath": "G:/Franklin/99_Sistema/_ia/PRÉ Resumo Whatsapp.md" }
+  },
+  "commands": {
+    "dailyTasks": {
+      "handler": "task",
+      "key": "tarefa",
+      "section": "Tarefas",
+      "triggers": ["tarefa", "tarefas", "afazer", "todo"]
+    },
+    "mealLog": {
+      "handler": "food",
+      "key": "alimentacao",
+      "triggers": {
+        "cafe": { "index": 0, "variations": ["cafe", "cafezinho"] },
+        "almoco": { "index": 1, "variations": ["almoco", "almocei", "almosso"] },
+        "janta": { "index": 2, "variations": ["janta", "jantar", "jantei"] },
+        "lanche": { "index": 3, "variations": ["lanche", "lanchei"] }
+      }
+    },
+    "sleepLog": {
+      "handler": "sleep",
+      "key": "sono",
+      "triggers": {
+        "dormi": { "variations": ["dormi", "dormir", "dormindo"] },
+        "acordei": { "variations": ["acordei", "acordar", "acordado"] }
+      }
+    },
+    "workoutLog": {
+      "handler": "exercise",
+      "key": "exercicio",
+      "triggers": ["exercício", "exercitei", "treino", "treinei", "academia", "corrida", "corri"]
+    },
+    "screenLog": {
+      "handler": "screenTime",
+      "key": "tempo_tela",
+      "triggers": ["tempo", "tela", "celular", "instagram", "whatsapp", "youtube", "tiktok"]
+    },
+    "gamingLog": {
+      "handler": "games_dur",
+      "key": "jogos",
+      "triggers": ["games", "game", "jogo", "jogos", "joguei"]
+    },
+    "procrastLog": {
+      "handler": "procrastination",
+      "key": "procrastinacao",
+      "triggers": ["procrastinacao", "procrastinei", "enrolei", "dispersão"]
+    },
+    "readingLog": {
+      "handler": "reading",
+      "key": "leitura",
+      "triggers": ["leitura", "li", "ler", "livro", "livros"]
+    },
+    "freeTimeLog": {
+      "handler": "leisure",
+      "key": "lazer",
+      "triggers": ["lazer", "diversao", "passeio", "passear"]
+    },
+    "anxietyLog": {
+      "handler": "anxiety",
+      "key": "ansiedade",
+      "triggers": ["ansiedade", "ansioso", "nervoso", "estresse", "estressado", "preocupado"]
+    },
+    "descriptionLog": {
+      "handler": "description",
+      "triggers": ["description"]
+    },
+    "annotationLog": {
+      "handler": "annotation",
+      "triggers": ["anotação", "anotacao"]
+    },
+    "manualForward": {
+      "handler": "file-forwarder-manual",
+      "triggers": ["encaminhar", "encaminha", "enviar", "envia", "mandar", "manda"]
+    },
+    "fileForwarderAutoWHATStoWHATS": {
+      "handler": "file-forwarder-auto_WHATS_to_WHATS"
+    },
+    "audioProcessing": {
+      "handler": "audioHandler"
+    },
+    "messageLogger": {
+      "handler": "messageLogger"
+    },
+    "fileForwarderAutoWHATStoLOCAL": {
+      "handler": "file-forwarder-auto_WHATS_to_LOCAL"
+    },
+    "undo": {
+      "handler": "undo",
+      "triggers": ["desfazer", "undo"]
+    },
+    "llmResumo": {
+      "handler": "llmResumo",
+      "triggers": ["atualizar_resumo", "atualizar resumo"]
+    },
+    "agenda": {
+      "handler": "agenda",
+      "triggers": ["agenda"]
+    },
+    "dailyDigest": {
+      "handler": "dailyDigest",
+      "triggers": ["resumo_diario"]
+    }
+  }
+}
