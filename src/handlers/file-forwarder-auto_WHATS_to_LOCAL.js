@@ -1,6 +1,7 @@
 const fs = require("fs-extra");
 const path = require("path");
 const { data } = require("../config");
+const { enqueue } = require("../core/messageQueue");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "file_to_folder_state.json");
 
@@ -72,7 +73,9 @@ function loadState() {
 
 function saveState(state) {
     fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf8");
+    const tmp = `${STATE_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf8");
+    fs.renameSync(tmp, STATE_FILE);
 }
 
 function buildFilename(msg) {
@@ -197,9 +200,11 @@ module.exports = {
             await fs.writeFile(filePath, buffer);
 
             if (!chat?.isGroup) {
-                const state = loadState();
-                state[author] = msg.timestamp;
-                saveState(state);
+                await enqueue("fwd:local_state", async () => {
+                    const state = loadState();
+                    state[author] = msg.timestamp;
+                    saveState(state);
+                });
             }
 
             console.log(`[FILE TO LOCAL] Salvo: ${filename} → ${localPath}`);

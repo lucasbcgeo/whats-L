@@ -32,8 +32,24 @@ async function handle({ msg, parsed }) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
     const current = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8").trimEnd() : "";
-    const block = `## ${payload.title}\n${payload.text}`;
-    const next = current ? `${current}\n\n${block}\n` : `${block}\n`;
+    const bullet = `- ${payload.text}`;
+    const header = `## ${payload.title}`;
+    const headerRegex = new RegExp(`(^|\\n)${header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`, "m");
+    const match = current.match(headerRegex);
+    let next;
+    if (!current) {
+        next = `${header}\n\n${bullet}\n`;
+    } else if (!match) {
+        next = `${current}\n\n${header}\n\n${bullet}\n`;
+    } else {
+        const sectionStart = match.index + match[0].length;
+        const rest = current.slice(sectionStart);
+        const nextHeader = rest.search(/\n##\s+/);
+        const insertAt = nextHeader >= 0 ? sectionStart + nextHeader : current.length;
+        const prefix = current.slice(0, insertAt).replace(/\n*$/, "\n");
+        const suffix = current.slice(insertAt);
+        next = `${prefix}${bullet}\n${suffix.replace(/^\n+/, "\n")}`.replace(/\n*$/, "\n");
+    }
     fs.writeFileSync(filePath, next, "utf8");
     return { filePath, title: payload.title, value: payload.text };
 }

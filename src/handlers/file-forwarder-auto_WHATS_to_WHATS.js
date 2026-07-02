@@ -2,6 +2,7 @@ const fs = require("fs-extra");
 const path = require("path");
 const { getForwarderSources, reload } = require("../config");
 const { client } = require("../lib/whatsappClient");
+const { enqueue } = require("../core/messageQueue");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "forward_state.json");
 
@@ -19,7 +20,9 @@ function loadState() {
 
 function saveState(state) {
     fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf8");
+    const tmp = `${STATE_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf8");
+    fs.renameSync(tmp, STATE_FILE);
 }
 
 let cachedGroupId = null;
@@ -125,13 +128,15 @@ module.exports = {
 
             await targetGroup.sendMessage(media, { caption: `[${config.label}] ${msg.body || ""}`.trim() });
 
-            const state = loadState();
-            state[matchedKey] = {
-                label: config.label,
-                lastForwardTs: msg.timestamp,
-                lastForwardDate: new Date(msg.timestamp * 1000).toISOString(),
-            };
-            saveState(state);
+            await enqueue("fwd:whats_state", async () => {
+                const state = loadState();
+                state[matchedKey] = {
+                    label: config.label,
+                    lastForwardTs: msg.timestamp,
+                    lastForwardDate: new Date(msg.timestamp * 1000).toISOString(),
+                };
+                saveState(state);
+            });
 
             console.log(`[FILE FORWARDER] Sucesso: Arquivo de ${config.label} incrementado.`);
 

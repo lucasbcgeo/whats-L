@@ -4,7 +4,7 @@ const fs = require("fs-extra");
 const os = require("os");
 const { TRANSCRIPTION_MODEL_PATH } = require("../config/env");
 
-const PYTHON = "G:/Projetos/whats-L/venv/python.exe";
+const PYTHON = "G:/Projetos/whats-L/venv/Scripts/python.exe";
 const TRANSCRIBE_SCRIPT = path.join(__dirname, "..", "..", "scripts", "transcribe.py");
 const FFPROBE = "ffprobe";
 

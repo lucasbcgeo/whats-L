@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { enqueue } = require("./messageQueue");
 
 const FILE = path.join(__dirname, "..", "..", "data", "processed.json");
 
@@ -58,17 +59,19 @@ function markProcessed(msg) {
     const id = getId(msg);
     if (!id) return;
 
-    const db = load();
-    const now = Math.floor(Date.now() / 1000);
-    const ttl = Number(process.env.DEDUPE_TTL ?? 72 * 3600);
+    return enqueue("dedupe:processed", () => {
+        const db = load();
+        const now = Math.floor(Date.now() / 1000);
+        const ttl = Number(process.env.DEDUPE_TTL ?? 72 * 3600);
 
-    db.messages[id] = now;
+        db.messages[id] = now;
 
-    for (const [k, ts] of Object.entries(db.messages)) {
-        if (now - ts > ttl) delete db.messages[k];
-    }
+        for (const [k, ts] of Object.entries(db.messages)) {
+            if (now - ts > ttl) delete db.messages[k];
+        }
 
-    save(db);
+        save(db);
+    });
 }
 
 module.exports = { isProcessed, markProcessed };

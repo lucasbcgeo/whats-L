@@ -68,11 +68,12 @@ async function resync({ filePath, client, force = false }) {
     lastResyncByPath.set(filePath, now);
 
     const chats = await client.getChats();
+    const contacts = typeof client.getContacts === "function" ? await client.getContacts() : [];
     const data = {};
     const seenNumbers = new Set();
-    for (const chat of chats) {
+    for (const chat of [...chats, ...contacts]) {
         if (chat.isGroup) continue;
-        const name = chat.name || chat.contact?.pushname;
+        const name = chat.name || chat.contact?.pushname || chat.pushname || chat.shortName || chat.verifiedName;
         if (!name) continue;
         const number = chat.id?._serialized;
         if (!number || !CONTACT_ID_SUFFIXES.some(suffix => number.endsWith(suffix))) continue;

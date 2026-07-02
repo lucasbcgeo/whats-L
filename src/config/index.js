@@ -147,16 +147,17 @@ function getTriggerMapping(handlerName) {
     return null;
 }
 
-function resolveProfile({ groupName, number }) {
+function resolveProfile({ groupName, number, hasMedia }) {
     const contacts = data.labels?.contacts || {};
     const groups = data.labels?.groups || {};
-    
+    const matches = [];
+
     for (const [profileName, profile] of Object.entries(data.profiles || {})) {
         const match = profile.match || {};
-        
+
         let groupMatch = false;
         let numberMatch = false;
-        
+
         if (match.groups && groupName) {
             for (const groupKey of match.groups) {
                 const groupConfig = groups[groupKey];
@@ -166,21 +167,21 @@ function resolveProfile({ groupName, number }) {
                 }
             }
         }
-        
+
         if (match.groupName && groupName && match.groupName === groupName) {
             groupMatch = true;
         }
-        
+
         if (match.contacts && number) {
             for (const contactKey of match.contacts) {
                 const contactConfig = contacts[contactKey];
-                
+
                 // Check main numbers
                 if (contactConfig?.numbers && contactConfig.numbers.includes(number)) {
                     numberMatch = true;
                     break;
                 }
-                
+
                 // Check sublabels
                 if (contactConfig?.sublabels) {
                     for (const sublabelConfig of Object.values(contactConfig.sublabels)) {
@@ -190,33 +191,45 @@ function resolveProfile({ groupName, number }) {
                         }
                     }
                 }
-                
+
                 if (numberMatch) break;
             }
         }
-        
+
         if (match.numbers && number && match.numbers.includes(number)) {
             numberMatch = true;
         }
         if (match.number && number && match.number === number) {
             numberMatch = true;
         }
-        
+
         const hasGroupMatch = match.groupName || match.groups;
         const hasNumberMatch = match.numbers || match.number || match.contacts;
-        
+
         if (hasGroupMatch && hasNumberMatch) {
-            if (groupMatch && numberMatch) return profileName;
+            if (groupMatch && numberMatch) matches.push(profileName);
         } else if (hasGroupMatch) {
-            if (groupMatch) return profileName;
+            if (groupMatch) matches.push(profileName);
         } else if (hasNumberMatch) {
-            if (numberMatch) return profileName;
+            if (numberMatch) matches.push(profileName);
         }
     }
-    return null;
+
+    if (matches.length <= 1) return matches[0] || null;
+
+    const hasAutoForward = (name) => {
+        const features = data.profiles?.[name]?.features || [];
+        return features.some(f => f.startsWith("autoForward"));
+    };
+
+    if (hasMedia) {
+        return matches.find(n => hasAutoForward(n)) || matches[0];
+    } else {
+        return matches.find(n => !hasAutoForward(n)) || matches[0];
+    }
 }
 
-async function resolveMessageProfile({ groupName, number }, client) {
+async function resolveMessageProfile({ groupName, number, hasMedia }, client) {
     let resolvedNumber = number;
     if (number?.endsWith("@lid") && client?.getContactLidAndPhone) {
         try {
@@ -226,8 +239,8 @@ async function resolveMessageProfile({ groupName, number }, client) {
             console.error(`[PROFILE] Falha ao converter LID ${number}:`, e.message);
         }
     }
-    return resolveProfile({ groupName, number: resolvedNumber })
-        || resolveProfile({ groupName, number });
+    return resolveProfile({ groupName, number: resolvedNumber, hasMedia })
+        || resolveProfile({ groupName, number, hasMedia });
 }
 
 function getMessageSenderId(msg, isGroup) {

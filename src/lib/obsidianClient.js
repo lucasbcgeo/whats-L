@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs-extra");
 const yaml = require("js-yaml");
 const { VAULT, DAILY_FOLDER, DAILY_LOG_CUTOFF } = require("../config/env");
+const { enqueue } = require("../core/messageQueue");
 
 const vaultPath = VAULT;
 const dailyFolder = DAILY_FOLDER || "Diario";
@@ -47,12 +48,14 @@ async function writeDaily({ filePath, fmObj, body }) {
 }
 
 async function upsertRootKey({ dateStr, key, mutator }) {
-  const { filePath, fmObj, body } = await readDaily({ dateStr });
-  const current = fmObj[key];
-  const next = mutator(current, fmObj);
-  fmObj[key] = next;
-  await writeDaily({ filePath, fmObj, body });
-  return { filePath, key, value: next };
+  return enqueue(`obsidian:${dateStr}`, async () => {
+    const { filePath, fmObj, body } = await readDaily({ dateStr });
+    const current = fmObj[key];
+    const next = mutator(current, fmObj);
+    fmObj[key] = next;
+    await writeDaily({ filePath, fmObj, body });
+    return { filePath, key, value: next };
+  });
 }
 
 function toIsoMinuteZ(tsSeconds) {

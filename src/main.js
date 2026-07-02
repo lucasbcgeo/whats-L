@@ -22,6 +22,7 @@ const { startWatching: startLlmResumoWatching } = require("./services/llmResumoW
 const { startAppointmentAlerts } = require("./services/appointmentAlertService");
 const { parseCommand } = require("./utils/parse");
 const { isProcessed, markProcessed } = require("./core/dedupe");
+const { enqueue } = require("./core/messageQueue");
 const { getHandlerMetricName, saveUndoContext, undoMetric } = require("./services/undoService");
 const { resolveMessageProfile, getMessageSenderId, isGroupAllowed, data } = require("./config");
 const { startServer: startOutboundServer, stopServer: stopOutboundServer } = require("./services/outboundServer");
@@ -155,6 +156,7 @@ async function processMessage(msg, { silent, force } = { silent: false, force: f
         const profile = await resolveMessageProfile({
             groupName: chat.isGroup ? chat.name : null,
             number: getMessageSenderId(msg, chat.isGroup),
+            hasMedia: msg.hasMedia,
         }, client);
 
         console.log("[DEBUG] msg.from:", msg.from);
@@ -454,7 +456,7 @@ client.on("message_create", async (msg) => {
             return;
         }
         
-        await processMessage(msg);
+        await enqueue(msg.from, () => processMessage(msg));
     } catch (e) {
         console.error("[MESSAGE CREATE ERROR]", e.message);
     }
