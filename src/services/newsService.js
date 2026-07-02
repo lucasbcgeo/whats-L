@@ -56,8 +56,8 @@ function formatNews(news) {
             if (seenTitles.has(titleNormalized)) continue;
             seenTitles.add(titleNormalized);
 
-            const fonte = item.fonte ? ` (${item.fonte})` : "";
-            categoryLines.push(`• ${item.titulo}${fonte}`);
+            const link = item.url ? ` ${item.url}` : "";
+            categoryLines.push(`• ${item.titulo}${link}`);
         }
 
         if (categoryLines.length > 0) {

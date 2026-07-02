@@ -110,7 +110,9 @@ function parseOverdueTasks(searchResults, today) {
             text = result.matches.map(m => m.context || "").join("\n");
         }
 
-        for (const line of text.split("\n")) {
+        const lines = text.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             if (!line.match(/^- \[ \]/)) continue;
 
             const dueMatch = line.match(/⏳\s*(\d{4}-\d{2}-\d{2})/);
@@ -118,9 +120,7 @@ function parseOverdueTasks(searchResults, today) {
             const taskDate = dueMatch?.[1] || schedMatch?.[1];
             if (!taskDate || taskDate >= today) continue;
 
-            // Extract text: from after checkbox until ⏳ or 📅
             const rawText = line.replace(/^- \[ \]\s+/, "").split(/(?=[📅⏳🔁])/)[0].trim();
-            // Strip markdown bold markers, trailing tags
             const cleanText = rawText.replace(/\*\*/g, "").replace(/\s*#[\w-]+/g, "").trim();
 
             const [y, m, d] = taskDate.split("-");
@@ -128,10 +128,33 @@ function parseOverdueTasks(searchResults, today) {
             if (seen.has(dedupKey)) continue;
             seen.add(dedupKey);
 
+            // Collect subtasks (indented lines starting with `  - [ ]`)
+            const subtasks = [];
+            for (let j = i + 1; j < lines.length; j++) {
+                const sub = lines[j];
+                if (sub.match(/^\s{2,}- \[ \]/)) {
+                    const subText = sub.replace(/^\s+- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").replace(/\*\*/g, "").trim();
+                    if (subText) subtasks.push(subText);
+                } else if (sub.match(/^- \[ \]/)) {
+                    break; // next parent task
+                } else if (sub.trim() && !sub.match(/^\s/)) {
+                    break; // non-indented content, stop
+                }
+            }
+
             tasks.push({
                 text: cleanText,
+                subtasks,
                 due: dueMatch?.[1] || null,
                 scheduled: schedMatch?.[1] || null,
+                dateLabel: `${d}/${m}`,
+                source: filename
+            });
+        }
+    }
+
+    return tasks;
+}
                 dateLabel: `${d}/${m}`,
                 source: filename
             });
@@ -270,7 +293,12 @@ function formatDigest(todayTasks, overdueTasks, commitments, news) {
     if (overdueTasks.length > 0) {
         lines.push("");
         lines.push("⚠️ TAREFAS ATRASADAS");
-        for (const task of overdueTasks) lines.push(`• [ ] ${task.text} (${task.dateLabel})`);
+        for (const task of overdueTasks) {
+            lines.push(`• [ ] ${task.text} (${task.dateLabel})`);
+            for (const sub of task.subtasks || []) {
+                lines.push(`  • [ ] ${sub}`);
+            }
+        }
     }
 
     if (commitments.length > 0) {
