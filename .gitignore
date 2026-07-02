@@ -21,6 +21,7 @@ data/
 *.json
 !.codex/
 !.codex/*.json
+.codex/config.default.json
 
 # Logs
 logs/
