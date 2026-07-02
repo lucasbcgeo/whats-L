@@ -4,7 +4,7 @@ const { DAILY_FOLDER, OBSIDIAN_REST_API_URL, OBSIDIAN_REST_API_KEY } = require("
 const { fetchNews, formatNews } = require("./newsService");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "daily_digest_state.json");
-const DELAY_MS = 30000; // 30s delay after startup
+const DELAY_MS = 60000; // 60s delay after startup (waitForWhatsAppWarmup + other services)
 
 function todayLocal(offset = -3) {
     const now = new Date(Date.now() + offset * 3600 * 1000);
@@ -36,6 +36,10 @@ function markRan() {
 // --- Obsidian REST API helpers ---
 
 async function obsidianFetch(endpoint, options = {}) {
+    if (!OBSIDIAN_REST_API_KEY) {
+        throw new Error("OBSIDIAN_REST_API_KEY não configurada no .env");
+    }
+
     const url = `${OBSIDIAN_REST_API_URL}${endpoint}`;
     const headers = {
         "Authorization": `Bearer ${OBSIDIAN_REST_API_KEY}`,

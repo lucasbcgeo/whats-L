@@ -10,5 +10,5 @@ module.exports = {
   OLLAMA_API_KEY: process.env.OLLAMA_API_KEY,
   OLLAMA_MODEL: process.env.OLLAMA_MODEL || "gpt-oss:120b",
   OBSIDIAN_REST_API_URL: process.env.OBSIDIAN_REST_API_URL || "https://127.0.0.1:27124",
-  OBSIDIAN_REST_API_KEY: process.env.OBSIDIAN_REST_API_KEY || "",
+  OBSIDIAN_REST_API_KEY: process.env.OBSIDIAN_REST_API_KEY || process.env.LOCAL_REST_API_OBSI_LUCAS || "",
 };

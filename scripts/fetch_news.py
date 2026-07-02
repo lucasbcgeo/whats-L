@@ -22,10 +22,16 @@ EXCLUDE_terms = [
 
 def fetch_category(query, max_results=3):
     """Busca notícias de uma categoria."""
-    gn = GoogleNews(lang='pt', region='BR')
-    gn.search(query)
-    results = gn.results()
-    gn.clear()
+    import io
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()  # suprimir erros NoneType do GoogleNews
+    try:
+        gn = GoogleNews(lang='pt', region='BR')
+        gn.search(query)
+        results = gn.results()
+        gn.clear()
+    finally:
+        sys.stdout = old_stdout
 
     filtered = []
     for r in results:
