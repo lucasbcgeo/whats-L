@@ -11,7 +11,7 @@ CATEGORIES = {
     "ciencia": "ciência",
     "politica": "política",
     "cultura": "cultura",
-    "concursos": "concursos públicos CGU legislativos controle fiscal"
+    "concursos": "concursos públicos 2026"
 }
 
 EXCLUDE_terms = [
@@ -29,7 +29,11 @@ def fetch_category(query, max_results=3):
 
     filtered = []
     for r in results:
-        title = r.get("title", "")
+        if not isinstance(r, dict):
+            continue
+        title = r.get("title") or ""
+        if not title.strip():
+            continue
         title_lower = title.lower()
 
         # Filtrar termos indesejados
@@ -38,8 +42,8 @@ def fetch_category(query, max_results=3):
 
         filtered.append({
             "titulo": title,
-            "fonte": r.get("media", ""),
-            "url": r.get("link", "")
+            "fonte": r.get("media") or "",
+            "url": r.get("link") or ""
         })
 
         if len(filtered) >= max_results:
