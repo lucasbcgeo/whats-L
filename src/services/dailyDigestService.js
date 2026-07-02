@@ -1,10 +1,10 @@
 const fs = require("fs");
 const path = require("path");
-const { DAILY_FOLDER, OBSIDIAN_REST_API_URL, OBSIDIAN_REST_API_KEY } = require("../config/env");
+const { VAULT, DAILY_FOLDER, OBSIDIAN_REST_API_URL, OBSIDIAN_REST_API_KEY } = require("../config/env");
 const { fetchNews, formatNews } = require("./newsService");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "daily_digest_state.json");
-const DELAY_MS = 60000; // 60s delay after startup (waitForWhatsAppWarmup + other services)
+const DELAY_MS = 60000;
 
 function todayLocal(offset = -3) {
     const now = new Date(Date.now() + offset * 3600 * 1000);
@@ -12,11 +12,7 @@ function todayLocal(offset = -3) {
 }
 
 function readState() {
-    try {
-        return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-    } catch {
-        return {};
-    }
+    try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch { return {}; }
 }
 
 function writeState(state) {
@@ -24,81 +20,161 @@ function writeState(state) {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf8");
 }
 
-function alreadyRanToday() {
-    const state = readState();
-    return state.lastRun === todayLocal();
+function alreadyRanToday() { return readState().lastRun === todayLocal(); }
+function markRan() { writeState({ lastRun: todayLocal(), sent: true }); }
+
+// --- Auth key helper ---
+
+function getAuthKey() {
+    const raw = OBSIDIAN_REST_API_KEY || "";
+    return raw.startsWith("Bearer ") ? raw.slice(7) : raw;
 }
 
-function markRan() {
-    writeState({ lastRun: todayLocal(), sent: true });
+// --- Obsidian REST API ---
+
+async function obsidianGet(endpoint) {
+    const res = await fetch(`${OBSIDIAN_REST_API_URL}${endpoint}`, {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${getAuthKey()}` },
+        signal: AbortSignal.timeout(10000)
+    });
+    if (!res.ok) throw new Error(`Obsidian API ${res.status}`);
+    return res;
 }
 
-// --- Obsidian REST API helpers ---
-
-async function obsidianFetch(endpoint, options = {}) {
-    if (!OBSIDIAN_REST_API_KEY) {
-        throw new Error("OBSIDIAN_REST_API_KEY não configurada no .env");
-    }
-
-    const url = `${OBSIDIAN_REST_API_URL}${endpoint}`;
-    const headers = {
-        "Authorization": `Bearer ${OBSIDIAN_REST_API_KEY}`,
-        ...options.headers
-    };
-
-    const response = await fetch(url, { ...options, headers });
-    if (!response.ok) {
-        throw new Error(`Obsidian API ${response.status}: ${response.statusText}`);
-    }
-    return response;
+async function obsidianPost(endpoint, body) {
+    const res = await fetch(`${OBSIDIAN_REST_API_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${getAuthKey()}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000)
+    });
+    if (!res.ok) throw new Error(`Obsidian API ${res.status}`);
+    return res;
 }
 
 async function readNote(notePath) {
     const encoded = encodeURIComponent(notePath);
-    const res = await obsidianFetch(`/vault/${encoded}`);
+    const res = await obsidianGet(`/vault/${encoded}`);
     return await res.text();
 }
 
-async function searchSimple(query) {
-    const res = await obsidianFetch("/search/simple/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query })
-    });
-    return await res.json();
+async function searchTasks() {
+    // search/simple with query param returns {0: {filename, matches[]}, ...}
+    const q = encodeURIComponent("- [ ]");
+    const res = await obsidianPost(`/search/simple/?query=${q}`, {});
+    const data = await res.json();
+    return Object.values(data); // [{filename, matches: [{context, ...}]}]
 }
 
-async function searchJsonLogic(logic) {
-    const res = await obsidianFetch("/search/", {
-        method: "POST",
-        headers: { "Content-Type": "application/vnd.olrapi.jsonlogic+json" },
-        body: JSON.stringify(logic)
-    });
-    return await res.json();
+// --- Filesystem fallback ---
+
+function readNoteFs(vaultRelPath) {
+    if (!VAULT) throw new Error("VAULT not set");
+    return fs.readFileSync(path.join(VAULT, vaultRelPath), "utf8");
+}
+
+function searchTasksFs() {
+    if (!VAULT) return [];
+    const base = DAILY_FOLDER || "01_Arquivos/Jornada";
+    const results = [];
+    for (let i = 0; i < 90; i++) {
+        const d = new Date(Date.now() + (-3) * 3600000 - i * 86400000);
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        const rel = `${base}/${yyyy}/${mm}/${yyyy}-${mm}-${dd}.md`;
+        try {
+            const content = readNoteFs(rel);
+            if (content.includes("- [ ]")) {
+                results.push({ filename: rel, context: content });
+            }
+        } catch {}
+    }
+    return results;
 }
 
 // --- Task parsing ---
 
-function parseTasksFromMarkdown(content) {
+function parseOverdueTasks(searchResults, today) {
+    const seen = new Set();
     const tasks = [];
-    const lines = content.split("\n");
 
-    for (const line of lines) {
-        const match = line.match(/^- \[ \]\s+(.+)/);
-        if (!match) continue;
+    for (const result of searchResults) {
+        const filename = result.filename || "";
 
-        const text = match[1].trim();
-        const dueMatch = text.match(/⏳\s*(\d{4}-\d{2}-\d{2})/);
-        const scheduledMatch = text.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
+        let text = "";
+        if (result.context) {
+            text = result.context;
+        } else if (result.matches) {
+            text = result.matches.map(m => m.context || "").join("\n");
+        }
 
-        tasks.push({
-            text: text.replace(/[📅⏳🔁#].*/g, "").trim(),
-            due: dueMatch ? dueMatch[1] : null,
-            scheduled: scheduledMatch ? scheduledMatch[1] : null
-        });
+        for (const line of text.split("\n")) {
+            if (!line.match(/^- \[ \]/)) continue;
+
+            const dueMatch = line.match(/⏳\s*(\d{4}-\d{2}-\d{2})/);
+            const schedMatch = line.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
+            const taskDate = dueMatch?.[1] || schedMatch?.[1];
+            if (!taskDate || taskDate >= today) continue;
+
+            // Extract text: from after checkbox until ⏳ or 📅
+            const rawText = line.replace(/^- \[ \]\s+/, "").split(/(?=[📅⏳🔁])/)[0].trim();
+            // Strip markdown bold markers, trailing tags
+            const cleanText = rawText.replace(/\*\*/g, "").replace(/\s*#[\w-]+/g, "").trim();
+
+            const [y, m, d] = taskDate.split("-");
+            const dedupKey = `${filename}|${cleanText}|${taskDate}`;
+            if (seen.has(dedupKey)) continue;
+            seen.add(dedupKey);
+
+            tasks.push({
+                text: cleanText,
+                due: dueMatch?.[1] || null,
+                scheduled: schedMatch?.[1] || null,
+                dateLabel: `${d}/${m}`,
+                source: filename
+            });
+        }
     }
 
     return tasks;
+}
+
+// --- Commitments (filesystem fallback) ---
+
+function collectCommitmentsFs(today) {
+    if (!VAULT) return [];
+    const base = DAILY_FOLDER || "01_Arquivos/Jornada";
+    const todayDate = new Date(today + "T12:00:00Z");
+    const dayOfWeek = todayDate.getUTCDay();
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const weekStart = new Date(todayDate);
+    weekStart.setUTCDate(todayDate.getUTCDate() - daysFromMonday);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+
+    const commitments = [];
+    for (let d = new Date(weekStart); d <= weekEnd; d = new Date(d.getTime() + 86400000)) {
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        const rel = `${base}/${yyyy}/${mm}/${yyyy}-${mm}-${dd}.md`;
+        try {
+            const content = readNoteFs(rel);
+            for (const line of content.split("\n")) {
+                if ((line.includes("#eventos") || (line.includes("📅") && line.includes("- ["))) && line.includes("📅")) {
+                    const dateMatch = line.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
+                    const date = dateMatch?.[1];
+                    if (date && date < today) continue;
+                    const titleMatch = line.match(/^- \[[ x]\]\s+(.+)/);
+                    const title = titleMatch ? titleMatch[1].replace(/[📅⏳🔁#].*/g, "").trim() : rel;
+                    commitments.push({ title, date, source: rel });
+                }
+            }
+        } catch {}
+    }
+    return commitments;
 }
 
 // --- Main logic ---
@@ -107,75 +183,40 @@ async function collectTodayTasks() {
     const today = todayLocal();
     const [yyyy, mm, dd] = today.split("-");
     const notePath = `${DAILY_FOLDER || "01_Arquivos/Jornada"}/${yyyy}/${mm}/${today}.md`;
-
     try {
-        const content = await readNote(notePath);
-        return parseTasksFromMarkdown(content);
+        let content;
+        try { content = await readNote(notePath); } catch { content = readNoteFs(notePath); }
+        const tasks = [];
+        for (const line of content.split("\n")) {
+            if (!line.match(/^- \[ \]/)) continue;
+            const text = line.replace(/^- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").trim();
+            tasks.push({ text });
+        }
+        return tasks;
     } catch (e) {
-        console.error("[DIGEST] Erro ao ler nota diária:", e.message);
+        console.error("[DIGEST] todayTasks error:", e.message);
         return [];
     }
 }
 
 async function collectOverdueTasks() {
     const today = todayLocal();
-
+    let results;
     try {
-        const results = await searchSimple("- [ ]");
-        console.log("[DIGEST] Search results type:", typeof results, "isArray:", Array.isArray(results));
-        console.log("[DIGEST] Search results:", JSON.stringify(results).slice(0, 500));
-
-        const tasks = [];
-
-        // Handle different response formats
-        let items = [];
-        if (Array.isArray(results)) {
-            items = results;
-        } else if (results && results.matches) {
-            items = results.matches;
-        } else if (results && typeof results === 'object') {
-            items = Object.values(results);
-        }
-
-        console.log("[DIGEST] Items to process:", items.length);
-
-        for (const result of items) {
-            if (!result || typeof result !== 'object') continue;
-
-            // Try different content fields
-            const content = result.content || result.snippet || result.text || result.excerpt || "";
-            const filePath = result.path || result.file || result.filename || "";
-
-            console.log("[DIGEST] Processing:", filePath, "content length:", content.length);
-
-            if (!content) continue;
-
-            const parsed = parseTasksFromMarkdown(content);
-            console.log("[DIGEST] Parsed tasks:", parsed.length);
-
-            for (const task of parsed) {
-                const taskDate = task.due || task.scheduled;
-                if (taskDate && taskDate < today) {
-                    tasks.push({ ...task, source: filePath });
-                }
-            }
-        }
-
-        console.log("[DIGEST] Total overdue tasks found:", tasks.length);
-        return tasks;
+        results = await searchTasks();
+        console.log("[DIGEST] REST API results:", results.length);
     } catch (e) {
-        console.error("[DIGEST] Erro ao buscar tarefas atrasadas:", e.message);
-        console.error("[DIGEST] Stack:", e.stack);
-        return [];
+        console.log("[DIGEST] REST API failed, using filesystem:", e.message);
+        results = searchTasksFs();
+        console.log("[DIGEST] Filesystem results:", results.length);
     }
+    return parseOverdueTasks(results, today);
 }
 
 async function collectWeeklyCommitments() {
     const today = todayLocal();
     const todayDate = new Date(today + "T12:00:00Z");
-    const dayOfWeek = todayDate.getUTCDay(); // 0=dom, 1=seg, ..., 6=sab
-
-    // Calcular início e fim da semana (segunda a domingo)
+    const dayOfWeek = todayDate.getUTCDay();
     const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     const weekStart = new Date(todayDate);
     weekStart.setUTCDate(todayDate.getUTCDate() - daysFromMonday);
@@ -193,28 +234,23 @@ async function collectWeeklyCommitments() {
                 { "<=": [{ "var": "date" }, weekEndStr] }
             ]
         };
-
-        const results = await searchJsonLogic(logic);
+        const res = await obsidianPost("/search/", logic);
+        const data = await res.json();
+        const entries = Object.values(data);
         const commitments = [];
-
-        for (const result of results || []) {
-            const dateMatch = result.content?.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
-            const date = dateMatch ? dateMatch[1] : null;
-
-            // Lógica: se compromisso é antes de hoje, não enviar
+        for (const entry of entries) {
+            const text = entry.matches?.map(m => m.context || "").join("\n") || "";
+            const dateMatch = text.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
+            const date = dateMatch?.[1];
             if (date && date < today) continue;
-
-            // Extrair título do compromisso
-            const titleMatch = result.content?.match(/^- \[[ x]\]\s+(.+)/);
-            const title = titleMatch ? titleMatch[1].replace(/[📅⏳🔁#].*/g, "").trim() : result.path;
-
-            commitments.push({ title, date, source: result.path });
+            const titleMatch = text.match(/^- \[[ x]\]\s+(.+)/);
+            const title = titleMatch ? titleMatch[1].replace(/[📅⏳🔁#].*/g, "").trim() : entry.filename;
+            commitments.push({ title, date, source: entry.filename });
         }
-
         return commitments;
     } catch (e) {
-        console.error("[DIGEST] Erro ao buscar compromissos:", e.message);
-        return [];
+        console.log("[DIGEST] Commitments API failed, using filesystem:", e.message);
+        return collectCommitmentsFs(today);
     }
 }
 
@@ -222,52 +258,40 @@ function formatDigest(todayTasks, overdueTasks, commitments, news) {
     const today = todayLocal();
     const [, mm, dd] = today.split("-");
     const dateFormatted = `${dd}/${mm}`;
-
     const lines = [];
 
-    // Tarefas do dia
     lines.push(`📋 TAREFAS DO DIA (${dateFormatted})`);
     if (todayTasks.length === 0) {
         lines.push("• Nenhuma tarefa para hoje");
     } else {
-        for (const task of todayTasks) {
-            lines.push(`• [ ] ${task.text}`);
-        }
+        for (const task of todayTasks) lines.push(`• [ ] ${task.text}`);
     }
 
-    // Tarefas atrasadas
     if (overdueTasks.length > 0) {
         lines.push("");
         lines.push("⚠️ TAREFAS ATRASADAS");
-        for (const task of overdueTasks) {
-            const dueStr = task.due || task.scheduled || "???";
-            const [y, m, d] = dueStr.split("-");
-            lines.push(`• [ ] ${task.text} (${d}/${m})`);
-        }
+        for (const task of overdueTasks) lines.push(`• [ ] ${task.text} (${task.dateLabel})`);
     }
 
-    // Compromissos da semana
     if (commitments.length > 0) {
         lines.push("");
         lines.push("📅 COMPROMISSOS DA SEMANA");
         for (const c of commitments) {
             if (c.date) {
-                const [y, m, d] = c.date.split("-");
                 const dateObj = new Date(c.date + "T12:00:00Z");
                 const dayNames = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-                const dayName = dayNames[dateObj.getUTCDay()];
-                lines.push(`• ${c.title} (${d}/${m} - ${dayName})`);
+                const [y, m, d] = c.date.split("-");
+                lines.push(`• ${c.title} (${d}/${m} - ${dayNames[dateObj.getUTCDay()]})`);
             } else {
                 lines.push(`• ${c.title}`);
             }
         }
     }
 
-    // Notícias
     const newsSection = formatNews(news);
     if (newsSection) {
         lines.push("");
-        lines.push(`📰 NOTÍCIAS (últimas 24h)`);
+        lines.push("📰 NOTÍCIAS (últimas 24h)");
         lines.push(newsSection);
     }
 
@@ -282,38 +306,34 @@ async function findGroup(client, groupKey) {
 }
 
 async function runDigest(client) {
-    if (alreadyRanToday()) {
-        console.log("[DIGEST] Já executou hoje, pulando.");
-        return;
-    }
+    if (alreadyRanToday()) { console.log("[DIGEST] Já executou hoje."); return; }
 
-    console.log("[DIGEST] Iniciando coleta de dados...");
-
+    console.log("[DIGEST] Iniciando coleta...");
     const [todayTasks, overdueTasks, commitments, news] = await Promise.all([
-        collectTodayTasks().catch(e => { console.error("[DIGEST] todayTasks error:", e.message); return []; }),
-        collectOverdueTasks().catch(e => { console.error("[DIGEST] overdueTasks error:", e.message); return []; }),
-        collectWeeklyCommitments().catch(e => { console.error("[DIGEST] commitments error:", e.message); return []; }),
-        fetchNews(3).catch(e => { console.error("[DIGEST] news error:", e.message); return {}; })
+        collectTodayTasks().catch(e => { console.error("[DIGEST] today:", e.message); return []; }),
+        collectOverdueTasks().catch(e => { console.error("[DIGEST] overdue:", e.message); return []; }),
+        collectWeeklyCommitments().catch(e => { console.error("[DIGEST] commitments:", e.message); return []; }),
+        fetchNews(3).catch(e => { console.error("[DIGEST] news:", e.message); return {}; })
     ]);
 
-    const message = formatDigest(todayTasks, overdueTasks, commitments, news);
+    console.log("[DIGEST] Result:", {
+        todayTasks: todayTasks.length,
+        overdueTasks: overdueTasks.length,
+        commitments: commitments.length
+    });
 
+    const message = formatDigest(todayTasks, overdueTasks, commitments, news);
     const group = await findGroup(client, "minime");
-    if (!group) {
-        console.error("[DIGEST] Grupo Minime não encontrado");
-        return;
-    }
+    if (!group) { console.error("[DIGEST] Grupo Minime não encontrado"); return; }
 
     await group.sendMessage(message);
     markRan();
-    console.log("[DIGEST] Resumo diário enviado para Minime.");
+    console.log("[DIGEST] Enviado.");
 }
 
 function startDailyDigest(client) {
     setTimeout(() => {
-        runDigest(client).catch(e => {
-            console.error("[DIGEST] Erro ao executar digest:", e.message);
-        });
+        runDigest(client).catch(e => console.error("[DIGEST] Erro:", e.message));
     }, DELAY_MS);
 }
 
