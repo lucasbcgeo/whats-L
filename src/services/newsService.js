@@ -1,7 +1,7 @@
 const { execFile } = require("child_process");
 const path = require("path");
 
-const PYTHON = path.join(__dirname, "..", "..", "venv", "Scripts", "python.exe");
+const PYTHON = "G:\\Projetos\\whats-L\\venv\\Scripts\\python.exe";
 const SCRIPT = path.join(__dirname, "..", "..", "scripts", "fetch_news.py");
 const TIMEOUT = 60000; // 60s
 
@@ -43,15 +43,26 @@ function formatNews(news) {
     }
 
     const lines = [];
+    const seenTitles = new Set();  // Deduplicar no Node também
+
     for (const [category, items] of Object.entries(news)) {
         if (!items || items.length === 0) continue;
 
         const label = LABELS[category] || category;
-        lines.push(`\n${label}`);
+        const categoryLines = [];
 
         for (const item of items) {
-            const fonte = item.fonte ? ` (${item.fonte})` : "";
-            lines.push(`• ${item.titulo}${fonte}`);
+            const titleNormalized = (item.titulo || "").toLowerCase().trim();
+            if (seenTitles.has(titleNormalized)) continue;
+            seenTitles.add(titleNormalized);
+
+            const link = item.url ? ` ${item.url}` : "";
+            categoryLines.push(`• ${item.titulo}${link}`);
+        }
+
+        if (categoryLines.length > 0) {
+            lines.push(`\n${label}`);
+            lines.push(...categoryLines);
         }
     }
 
