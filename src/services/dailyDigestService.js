@@ -155,14 +155,6 @@ function parseOverdueTasks(searchResults, today) {
 
     return tasks;
 }
-                dateLabel: `${d}/${m}`,
-                source: filename
-            });
-        }
-    }
-
-    return tasks;
-}
 
 // --- Commitments (filesystem fallback) ---
 
