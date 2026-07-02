@@ -122,23 +122,50 @@ async function collectOverdueTasks() {
 
     try {
         const results = await searchSimple("- [ ]");
+        console.log("[DIGEST] Search results type:", typeof results, "isArray:", Array.isArray(results));
+        console.log("[DIGEST] Search results:", JSON.stringify(results).slice(0, 500));
+
         const tasks = [];
 
-        for (const result of results || []) {
-            const content = result.content || "";
+        // Handle different response formats
+        let items = [];
+        if (Array.isArray(results)) {
+            items = results;
+        } else if (results && results.matches) {
+            items = results.matches;
+        } else if (results && typeof results === 'object') {
+            items = Object.values(results);
+        }
+
+        console.log("[DIGEST] Items to process:", items.length);
+
+        for (const result of items) {
+            if (!result || typeof result !== 'object') continue;
+
+            // Try different content fields
+            const content = result.content || result.snippet || result.text || result.excerpt || "";
+            const filePath = result.path || result.file || result.filename || "";
+
+            console.log("[DIGEST] Processing:", filePath, "content length:", content.length);
+
+            if (!content) continue;
+
             const parsed = parseTasksFromMarkdown(content);
+            console.log("[DIGEST] Parsed tasks:", parsed.length);
 
             for (const task of parsed) {
                 const taskDate = task.due || task.scheduled;
                 if (taskDate && taskDate < today) {
-                    tasks.push({ ...task, source: result.path });
+                    tasks.push({ ...task, source: filePath });
                 }
             }
         }
 
+        console.log("[DIGEST] Total overdue tasks found:", tasks.length);
         return tasks;
     } catch (e) {
         console.error("[DIGEST] Erro ao buscar tarefas atrasadas:", e.message);
+        console.error("[DIGEST] Stack:", e.stack);
         return [];
     }
 }

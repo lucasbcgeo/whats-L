@@ -43,15 +43,26 @@ function formatNews(news) {
     }
 
     const lines = [];
+    const seenTitles = new Set();  // Deduplicar no Node também
+
     for (const [category, items] of Object.entries(news)) {
         if (!items || items.length === 0) continue;
 
         const label = LABELS[category] || category;
-        lines.push(`\n${label}`);
+        const categoryLines = [];
 
         for (const item of items) {
+            const titleNormalized = (item.titulo || "").toLowerCase().trim();
+            if (seenTitles.has(titleNormalized)) continue;
+            seenTitles.add(titleNormalized);
+
             const fonte = item.fonte ? ` (${item.fonte})` : "";
-            lines.push(`• ${item.titulo}${fonte}`);
+            categoryLines.push(`• ${item.titulo}${fonte}`);
+        }
+
+        if (categoryLines.length > 0) {
+            lines.push(`\n${label}`);
+            lines.push(...categoryLines);
         }
     }
 
