@@ -5,6 +5,14 @@ const PYTHON = path.join(__dirname, "..", "..", "venv", "Scripts", "python.exe")
 const SCRIPT = path.join(__dirname, "..", "..", "scripts", "fetch_news.py");
 const TIMEOUT = 60000; // 60s
 
+const LABELS = {
+    tecnologia: "💻 Tecnologia",
+    ciencia: "🔬 Ciência",
+    politica: "🏛️ Política",
+    cultura: "🎓 Cultura",
+    concursos: "📝 Concursos"
+};
+
 function fetchNews(maxPerCategory = 3) {
     return new Promise((resolve, reject) => {
         const args = [SCRIPT, "--max-per-category", String(maxPerCategory)];
@@ -17,7 +25,8 @@ function fetchNews(maxPerCategory = 3) {
             }
 
             try {
-                const news = JSON.parse(stdout);
+                if (stderr) console.log("[NEWS] stderr:", stderr);
+                const news = JSON.parse(stdout.trim());
                 resolve(news);
             } catch (e) {
                 console.error("[NEWS] Parse error:", e.message);
@@ -28,19 +37,16 @@ function fetchNews(maxPerCategory = 3) {
 }
 
 function formatNews(news) {
-    const labels = {
-        tecnologia: "💻 Tecnologia",
-        ciencia: "🔬 Ciência",
-        politica: "🏛️ Política",
-        cultura: "🎓 Cultura",
-        concursos: "📝 Concursos"
-    };
+    if (!news || typeof news !== "object" || Array.isArray(news)) {
+        console.error("[NEWS] Invalid news data:", typeof news);
+        return "";
+    }
 
     const lines = [];
     for (const [category, items] of Object.entries(news)) {
         if (!items || items.length === 0) continue;
 
-        const label = labels[category] || category;
+        const label = LABELS[category] || category;
         lines.push(`\n${label}`);
 
         for (const item of items) {
