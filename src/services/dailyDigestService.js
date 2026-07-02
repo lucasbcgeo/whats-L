@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { VAULT, DAILY_FOLDER, OBSIDIAN_REST_API_URL, OBSIDIAN_REST_API_KEY } = require("../config/env");
+const { DAILY_FOLDER, OBSIDIAN_REST_API_URL, OBSIDIAN_REST_API_KEY } = require("../config/env");
 const { fetchNews, formatNews } = require("./newsService");
 
 const STATE_FILE = path.join(__dirname, "..", "..", "data", "daily_digest_state.json");
@@ -144,11 +144,12 @@ async function collectWeeklyCommitments() {
     const todayDate = new Date(today + "T12:00:00Z");
     const dayOfWeek = todayDate.getUTCDay(); // 0=dom, 1=seg, ..., 6=sab
 
-    // Calcular início e fim da semana
+    // Calcular início e fim da semana (segunda a domingo)
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     const weekStart = new Date(todayDate);
-    weekStart.setUTCDate(todayDate.getUTCDate() - dayOfWeek + 1); // segunda
+    weekStart.setUTCDate(todayDate.getUTCDate() - daysFromMonday);
     const weekEnd = new Date(weekStart);
-    weekEnd.setUTCDate(weekStart.getUTCDate() + 6); // domingo
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
 
     const weekStartStr = weekStart.toISOString().slice(0, 10);
     const weekEndStr = weekEnd.toISOString().slice(0, 10);
@@ -188,7 +189,7 @@ async function collectWeeklyCommitments() {
 
 function formatDigest(todayTasks, overdueTasks, commitments, news) {
     const today = todayLocal();
-    const [yyyy, mm, dd] = today.split("-");
+    const [, mm, dd] = today.split("-");
     const dateFormatted = `${dd}/${mm}`;
 
     const lines = [];
