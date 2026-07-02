@@ -1,7 +1,7 @@
 const { execFile } = require("child_process");
 const path = require("path");
 
-const PYTHON = path.join(__dirname, "..", "..", "venv", "Scripts", "python.exe");
+const PYTHON = "G:\\Projetos\\whats-L\\venv\\Scripts\\python.exe";
 const SCRIPT = path.join(__dirname, "..", "..", "scripts", "fetch_news.py");
 const TIMEOUT = 60000; // 60s
 

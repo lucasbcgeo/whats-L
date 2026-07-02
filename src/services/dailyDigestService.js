@@ -121,7 +121,7 @@ function extractOverdueFromContent(content, filename, today) {
         const subtasks = [];
         for (let j = i + 1; j < lines.length; j++) {
             const sub = lines[j];
-            if (sub.match(/^\s{2,}- \[ \]/)) {
+            if (sub.match(/^\s+- \[ \]/)) {
                 const subText = sub.replace(/^\s+- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").replace(/\*\*/g, "").trim();
                 if (subText) subtasks.push(subText);
             } else if (sub.match(/^- \[ \]/)) {
