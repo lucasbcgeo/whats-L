@@ -202,10 +202,26 @@ async function collectTodayTasks() {
         let content;
         try { content = await readNote(notePath); } catch { content = readNoteFs(notePath); }
         const tasks = [];
-        for (const line of content.split("\n")) {
+        const lines = content.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             if (!line.match(/^- \[ \]/)) continue;
-            const text = line.replace(/^- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").trim();
-            tasks.push({ text });
+            const text = line.replace(/^- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").replace(/\*\*/g, "").trim();
+
+            const subtasks = [];
+            for (let j = i + 1; j < lines.length; j++) {
+                const sub = lines[j];
+                if (sub.match(/^\s{2,}- \[ \]/)) {
+                    const subText = sub.replace(/^\s+- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").replace(/\*\*/g, "").trim();
+                    if (subText) subtasks.push(subText);
+                } else if (sub.match(/^- \[ \]/)) {
+                    break;
+                } else if (sub.trim() && !sub.match(/^\s/)) {
+                    break;
+                }
+            }
+
+            tasks.push({ text, subtasks });
         }
         return tasks;
     } catch (e) {
@@ -279,7 +295,12 @@ function formatDigest(todayTasks, overdueTasks, commitments, news) {
     if (todayTasks.length === 0) {
         lines.push("• Nenhuma tarefa para hoje");
     } else {
-        for (const task of todayTasks) lines.push(`• [ ] ${task.text}`);
+        for (const task of todayTasks) {
+            lines.push(`• [ ] ${task.text}`);
+            for (const sub of task.subtasks || []) {
+                lines.push(`  • [ ] ${sub}`);
+            }
+        }
     }
 
     if (overdueTasks.length > 0) {
