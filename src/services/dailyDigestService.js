@@ -96,13 +96,60 @@ function searchTasksFs() {
 
 // --- Task parsing ---
 
-function parseOverdueTasks(searchResults, today) {
+function extractOverdueFromContent(content, filename, today) {
     const seen = new Set();
     const tasks = [];
+    const lines = content.split("\n");
 
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.match(/^- \[ \]/)) continue;
+
+        const dueMatch = line.match(/⏳\s*(\d{4}-\d{2}-\d{2})/);
+        const schedMatch = line.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
+        const taskDate = dueMatch?.[1] || schedMatch?.[1];
+        if (!taskDate || taskDate >= today) continue;
+
+        const rawText = line.replace(/^- \[ \]\s+/, "").split(/(?=[📅⏳🔁])/)[0].trim();
+        const cleanText = rawText.replace(/\*\*/g, "").replace(/\s*#[\w-]+/g, "").trim();
+
+        const [y, m, d] = taskDate.split("-");
+        const dedupKey = `${filename}|${cleanText}|${taskDate}`;
+        if (seen.has(dedupKey)) continue;
+        seen.add(dedupKey);
+
+        const subtasks = [];
+        for (let j = i + 1; j < lines.length; j++) {
+            const sub = lines[j];
+            if (sub.match(/^\s{2,}- \[ \]/)) {
+                const subText = sub.replace(/^\s+- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").replace(/\*\*/g, "").trim();
+                if (subText) subtasks.push(subText);
+            } else if (sub.match(/^- \[ \]/)) {
+                break;
+            } else if (sub.trim() && !sub.match(/^\s/)) {
+                break;
+            }
+        }
+
+        tasks.push({
+            text: cleanText,
+            subtasks,
+            due: dueMatch?.[1] || null,
+            scheduled: schedMatch?.[1] || null,
+            dateLabel: `${d}/${m}`,
+            source: filename
+        });
+    }
+    return tasks;
+}
+
+async function parseOverdueTasks(searchResults, today) {
+    const tasks = [];
+    const filesToRead = new Set();
+
+    // First pass: collect file paths that have overdue tasks
     for (const result of searchResults) {
         const filename = result.filename || "";
-
         let text = "";
         if (result.context) {
             text = result.context;
@@ -110,46 +157,26 @@ function parseOverdueTasks(searchResults, today) {
             text = result.matches.map(m => m.context || "").join("\n");
         }
 
-        const lines = text.split("\n");
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
+        for (const line of text.split("\n")) {
             if (!line.match(/^- \[ \]/)) continue;
-
             const dueMatch = line.match(/⏳\s*(\d{4}-\d{2}-\d{2})/);
             const schedMatch = line.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
             const taskDate = dueMatch?.[1] || schedMatch?.[1];
-            if (!taskDate || taskDate >= today) continue;
-
-            const rawText = line.replace(/^- \[ \]\s+/, "").split(/(?=[📅⏳🔁])/)[0].trim();
-            const cleanText = rawText.replace(/\*\*/g, "").replace(/\s*#[\w-]+/g, "").trim();
-
-            const [y, m, d] = taskDate.split("-");
-            const dedupKey = `${filename}|${cleanText}|${taskDate}`;
-            if (seen.has(dedupKey)) continue;
-            seen.add(dedupKey);
-
-            // Collect subtasks (indented lines starting with `  - [ ]`)
-            const subtasks = [];
-            for (let j = i + 1; j < lines.length; j++) {
-                const sub = lines[j];
-                if (sub.match(/^\s{2,}- \[ \]/)) {
-                    const subText = sub.replace(/^\s+- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").replace(/\*\*/g, "").trim();
-                    if (subText) subtasks.push(subText);
-                } else if (sub.match(/^- \[ \]/)) {
-                    break; // next parent task
-                } else if (sub.trim() && !sub.match(/^\s/)) {
-                    break; // non-indented content, stop
-                }
+            if (taskDate && taskDate < today) {
+                filesToRead.add(filename);
+                break;
             }
+        }
+    }
 
-            tasks.push({
-                text: cleanText,
-                subtasks,
-                due: dueMatch?.[1] || null,
-                scheduled: schedMatch?.[1] || null,
-                dateLabel: `${d}/${m}`,
-                source: filename
-            });
+    // Second pass: read full file content to get subtasks
+    for (const filename of filesToRead) {
+        try {
+            let content;
+            try { content = await readNote(filename); } catch { content = readNoteFs(filename); }
+            tasks.push(...extractOverdueFromContent(content, filename, today));
+        } catch (e) {
+            console.error("[DIGEST] Could not read:", filename, e.message);
         }
     }
 
@@ -211,7 +238,7 @@ async function collectTodayTasks() {
             const subtasks = [];
             for (let j = i + 1; j < lines.length; j++) {
                 const sub = lines[j];
-                if (sub.match(/^\s{2,}- \[ \]/)) {
+                if (sub.match(/^\s+- \[ \]/)) {
                     const subText = sub.replace(/^\s+- \[ \]\s+/, "").replace(/[📅⏳🔁#].*/g, "").replace(/\*\*/g, "").trim();
                     if (subText) subtasks.push(subText);
                 } else if (sub.match(/^- \[ \]/)) {
