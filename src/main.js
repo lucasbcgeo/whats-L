@@ -20,6 +20,7 @@ const { startCheckpointRecovery } = require("./services/checkpointRecoveryServic
 const { startWatching } = require("./services/headerWatcherService");
 const { startWatching: startLlmResumoWatching } = require("./services/llmResumoWatcherService");
 const { startAppointmentAlerts } = require("./services/appointmentAlertService");
+const { startDailyDigest } = require("./services/dailyDigestService");
 const { parseCommand } = require("./utils/parse");
 const { isProcessed, markProcessed } = require("./core/dedupe");
 const { enqueue } = require("./core/messageQueue");
@@ -434,6 +435,12 @@ client.on("ready", async () => {
         await startAppointmentAlerts(client);
     } catch (e) {
         console.error("[READY] Erro appointment alerts (não bloqueia app):", e.message);
+    }
+    try {
+        startDailyDigest(client);
+        console.log("[READY] Daily digest agendado");
+    } catch (e) {
+        console.error("[READY] Erro daily digest (não bloqueia app):", e.message);
     }
     try {
         startOutboundServer(client);
