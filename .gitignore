@@ -58,3 +58,5 @@ models/
 
 # Tools (FFmpeg, etc)
 tools/
+
+config.default.json
