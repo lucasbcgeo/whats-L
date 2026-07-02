@@ -1,0 +1,55 @@
+const { execFile } = require("child_process");
+const path = require("path");
+
+const PYTHON = path.join(__dirname, "..", "..", "venv", "Scripts", "python.exe");
+const SCRIPT = path.join(__dirname, "..", "..", "scripts", "fetch_news.py");
+const TIMEOUT = 60000; // 60s
+
+function fetchNews(maxPerCategory = 3) {
+    return new Promise((resolve, reject) => {
+        const args = [SCRIPT, "--max-per-category", String(maxPerCategory)];
+
+        execFile(PYTHON, args, { timeout: TIMEOUT, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+            if (error) {
+                console.error("[NEWS] Python error:", error.message);
+                if (stderr) console.error("[NEWS] stderr:", stderr);
+                return reject(error);
+            }
+
+            try {
+                const news = JSON.parse(stdout);
+                resolve(news);
+            } catch (e) {
+                console.error("[NEWS] Parse error:", e.message);
+                reject(e);
+            }
+        });
+    });
+}
+
+function formatNews(news) {
+    const labels = {
+        tecnologia: "💻 Tecnologia",
+        ciencia: "🔬 Ciência",
+        politica: "🏛️ Política",
+        cultura: "🎓 Cultura",
+        concursos: "📝 Concursos"
+    };
+
+    const lines = [];
+    for (const [category, items] of Object.entries(news)) {
+        if (!items || items.length === 0) continue;
+
+        const label = labels[category] || category;
+        lines.push(`\n${label}`);
+
+        for (const item of items) {
+            const fonte = item.fonte ? ` (${item.fonte})` : "";
+            lines.push(`• ${item.titulo}${fonte}`);
+        }
+    }
+
+    return lines.join("\n");
+}
+
+module.exports = { fetchNews, formatNews };
